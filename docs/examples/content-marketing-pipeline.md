@@ -351,7 +351,7 @@ tracking_setup = <<~TRACKING
   ```javascript
   // Blog post engagement tracking
   gtag('event', 'blog_engagement', {
-    'article_title': '#{content_brief['topic']}',
+    'article_title': 'AI Automation in Business',
     'content_group1': 'AI Automation',
     'engagement_time_msec': engagement_time
   });
@@ -360,7 +360,7 @@ tracking_setup = <<~TRACKING
   gtag('event', 'social_click', {
     'platform': platform_name,
     'content_type': 'blog_promotion',
-    'article_title': '#{content_brief['topic']}'
+    'article_title': 'AI Automation in Business'
   });
   ```
   
