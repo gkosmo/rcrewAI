@@ -1,0 +1,24 @@
+---
+layout: default
+---
+
+<article class="example">
+    <header class="example-header">
+        <h1>{{ page.title }}</h1>
+        {% if page.description %}
+            <p class="lead">{{ page.description }}</p>
+        {% endif %}
+    </header>
+
+    <div class="example-content">
+        {{ content }}
+    </div>
+
+    <footer class="example-footer">
+        <div class="example-actions">
+            <a href="https://github.com/gkosmo/rcrewAI/tree/main/examples" class="btn btn-secondary">
+                View All Examples on GitHub
+            </a>
+        </div>
+    </footer>
+</article>

@@ -1,0 +1,40 @@
+*.gem
+*.rbc
+/.config
+/coverage/
+/InstalledFiles
+/pkg/
+/spec/reports/
+/spec/examples.txt
+/test/tmp/
+/test/version_tmp/
+/tmp/
+/.vscode/
+.DS_Store
+
+# rspec failure tracking
+.rspec_status
+
+# YARD artifacts
+.yardoc
+_yardoc
+doc/
+
+# bundler
+/vendor/bundle
+
+# SimpleCov
+coverage/
+
+# VCR cassettes (remove if you want to commit them)
+spec/vcr_cassettes/
+
+# Environment variables
+.env
+.env.local
+
+# Build artifacts
+rcrewai-*.gem
+
+# Original python lib 
+/crewAI

@@ -1,0 +1,59 @@
+title: RCrewAI Documentation
+description: Build AI agent crews in Ruby - Documentation and Tutorials
+baseurl: "/rcrewAI"
+url: "https://gkosmo.github.io"
+theme: jekyll-theme-minimal
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+
+# Navigation
+navigation:
+  - title: Home
+    url: /
+  - title: Getting Started
+    url: /tutorials/getting-started
+  - title: Tutorials
+    url: /tutorials/
+  - title: API Reference
+    url: /api/
+  - title: Examples
+    url: /examples/
+  - title: GitHub
+    url: https://github.com/gkosmo/rcrewAI
+
+# Plugins
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+# Collections
+collections:
+  tutorials:
+    output: true
+    permalink: /tutorials/:name
+  api:
+    output: true
+    permalink: /api/:name
+  examples:
+    output: true
+    permalink: /examples/:name
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+      type: "tutorials"
+    values:
+      layout: "tutorial"
+  - scope:
+      path: ""
+      type: "api"
+    values:
+      layout: "api"
+  - scope:
+      path: ""
+      type: "examples"
+    values:
+      layout: "example"
