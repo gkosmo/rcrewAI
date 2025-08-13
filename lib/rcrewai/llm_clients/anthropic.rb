@@ -58,7 +58,7 @@ module RCrewAI
 
       def authorization_header
         {
-          'Authorization' => "Bearer #{config.api_key}",
+          'x-api-key' => config.api_key,
           'anthropic-version' => API_VERSION
         }
       end
