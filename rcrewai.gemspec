@@ -8,8 +8,23 @@ Gem::Specification.new do |spec|
   spec.authors = ["gkosmo"]
   spec.email = ["gkosmo1@hotmail.com"]
 
-  spec.summary = "Ruby implementation of CrewAI framework"
-  spec.description = "A Ruby gem for building AI agent crews that work together to accomplish tasks"
+  spec.summary = "Build intelligent AI agent crews in Ruby - CrewAI implementation with multi-LLM support"
+  spec.description = <<~DESC
+    RCrewAI is a powerful Ruby framework for creating autonomous AI agent crews that collaborate to solve complex tasks.
+    Build intelligent workflows with reasoning agents, tool usage, memory systems, and human oversight.
+
+    Key Features:
+    • Multi-Agent Orchestration: Create crews of specialized AI agents that work together
+    • Multi-LLM Support: OpenAI GPT-4, Anthropic Claude, Google Gemini, Azure OpenAI, Ollama
+    • Rich Tool Ecosystem: Web search, file operations, SQL databases, email, code execution, PDF processing
+    • Agent Memory: Short-term and long-term memory for learning from past executions
+    • Human-in-the-Loop: Interactive approval workflows and collaborative decision making
+    • Advanced Task Management: Dependencies, retries, async execution, and context sharing
+    • Hierarchical Teams: Manager agents that coordinate and delegate to specialist agents
+    • Production Ready: Security controls, error handling, comprehensive logging, and monitoring
+    • Ruby-First Design: Built specifically for Ruby developers with idiomatic patterns
+    • CLI Tools: Command-line interface for creating and managing AI crews
+  DESC
   spec.homepage = "https://github.com/gkosmo/rcrewAI"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0.0"
@@ -17,6 +32,10 @@ Gem::Specification.new do |spec|
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
   spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"
+  spec.metadata["documentation_uri"] = "https://gkosmo.github.io/rcrewAI/"
+  spec.metadata["bug_tracker_uri"] = "#{spec.homepage}/issues"
+  spec.metadata["wiki_uri"] = "#{spec.homepage}/wiki"
+  spec.metadata["rubygems_mfa_required"] = "true"
 
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(__dir__) do
