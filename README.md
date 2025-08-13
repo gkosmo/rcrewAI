@@ -299,6 +299,38 @@ RCrewAI provides a flexible, production-ready architecture:
               └─────────────────┘    └─────────────────┘
 ```
 
+## 🚀 Rails Integration
+
+### rcrew RAILS
+
+For Rails applications, use the **rcrew RAILS** gem (`rcrewai-rails`) which provides:
+
+- **🏗️ Rails Engine**: Mountable engine with web UI for managing crews
+- **💾 ActiveRecord Integration**: Database persistence for agents, tasks, and executions
+- **⚡ Background Jobs**: ActiveJob integration for async crew execution
+- **🎯 Rails Generators**: Scaffolding for crews, agents, and tasks
+- **🌐 Web Dashboard**: Monitor and manage your AI crews through a web interface
+- **🔧 Rails Configuration**: Seamless integration with Rails configuration patterns
+
+```ruby
+# Gemfile
+gem 'rcrewai-rails'
+
+# config/routes.rb
+Rails.application.routes.draw do
+  mount RcrewAI::Rails::Engine, at: '/rcrewai'
+end
+
+# Generate a new crew
+rails generate rcrew_ai:crew marketing_crew
+
+# Create persistent agents and tasks through Rails models
+crew = RcrewAI::Rails::Crew.create!(name: "Content Team", description: "AI content generation")
+agent = crew.agents.create!(name: "writer", role: "Content Writer", goal: "Create engaging content")
+```
+
+Install rcrew RAILS: `gem install rcrewai-rails`
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
