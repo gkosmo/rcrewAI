@@ -303,7 +303,7 @@ RCrewAI provides a flexible, production-ready architecture:
 
 ### rcrew RAILS
 
-For Rails applications, use the **rcrew RAILS** gem (`rcrewai-rails`) which provides:
+For Rails applications, use the **rcrew RAILS** gem (`rcrewai-rails`) [(repo here)](https://github.com/gkosmo/rcrewai-rails) which provides:
 
 - **🏗️ Rails Engine**: Mountable engine with web UI for managing crews
 - **💾 ActiveRecord Integration**: Database persistence for agents, tasks, and executions
