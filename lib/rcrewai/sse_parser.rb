@@ -1,18 +1,22 @@
 # frozen_string_literal: true
 
 module RCrewAI
-  # Minimal Server-Sent Events line parser per
-  # https://html.spec.whatwg.org/multipage/server-sent-events.html
+  # Minimal Server-Sent Events line parser.
+  # Supports LF and CRLF line terminators (sufficient for OpenAI, Anthropic,
+  # Google, and well-behaved MCP HTTP servers). Lone-CR terminators are NOT
+  # handled — see https://html.spec.whatwg.org/multipage/server-sent-events.html
+  # if that becomes a requirement.
   # Feed bytes via #feed(chunk); yields { event: String, data: String } per complete event.
   class SSEParser
     def initialize(&block)
       @on_event = block
-      @buffer = +""
+      @buffer = String.new(encoding: Encoding::UTF_8)
       @event = "message"
       @data_lines = []
     end
 
     def feed(chunk)
+      chunk = chunk.dup.force_encoding(Encoding::UTF_8) unless chunk.encoding == Encoding::UTF_8
       @buffer << chunk
       while (idx = @buffer.index("\n"))
         line = @buffer.slice!(0, idx + 1).chomp
