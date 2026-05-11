@@ -4,8 +4,8 @@ require 'spec_helper'
 
 RSpec.describe RCrewAI::LLMClients::Base do
   let(:config) do
-    double('Configuration', 
-           api_key: 'test-key', 
+    double('Configuration',
+           api_key: 'test-key',
            model: 'test-model',
            temperature: 0.1,
            timeout: 60)
@@ -27,6 +27,27 @@ RSpec.describe RCrewAI::LLMClients::Base do
   describe '#chat' do
     it 'raises NotImplementedError' do
       expect { client.chat(messages: []) }.to raise_error(NotImplementedError)
+    end
+
+    it 'chat accepts tools and stream kwargs without ArgumentError' do
+      subclass = Class.new(described_class) do
+        def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **opts)
+          { content: "ok", tool_calls: [], usage: {}, finish_reason: :stop, model: "m", provider: :test }
+        end
+        def validate_config!; end
+      end
+      out = subclass.new(config).chat(messages: [], tools: [{ name: "x" }], stream: ->(_) {})
+      expect(out[:content]).to eq("ok")
+    end
+  end
+
+  describe '#supports_native_tools?' do
+    it 'defaults to true' do
+      subclass = Class.new(described_class) do
+        def chat(messages:, **opts); end
+        def validate_config!; end
+      end
+      expect(subclass.new(config).supports_native_tools?(model: "m")).to be true
     end
   end
 
