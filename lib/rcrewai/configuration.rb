@@ -6,6 +6,7 @@ module RCrewAI
     attr_accessor :openai_api_key, :anthropic_api_key, :google_api_key, :azure_api_key
     attr_accessor :openai_model, :anthropic_model, :google_model, :azure_model
     attr_accessor :base_url, :api_version, :deployment_name
+    attr_accessor :pricing, :ollama_native_tools, :log_level
 
     def initialize
       @llm_provider = :openai
@@ -20,6 +21,10 @@ module RCrewAI
       @google_model = 'gemini-pro'
       @azure_model = 'gpt-4'
       
+      @pricing = nil
+      @ollama_native_tools = nil
+      @log_level = :info
+
       # Load from environment variables
       load_from_env
     end
