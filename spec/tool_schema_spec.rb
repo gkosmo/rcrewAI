@@ -87,5 +87,15 @@ RSpec.describe RCrewAI::ToolSchema do
       expect { tool_class.new.execute_with_validation({ "n" => "abc" }) }
         .to raise_error(RCrewAI::Tools::ToolError, /n must be integer/i)
     end
+
+    it 'preserves explicit false for boolean params' do
+      klass = Class.new(RCrewAI::Tools::Base) do
+        tool_name "b"
+        description "b"
+        param :flag, type: :boolean, required: true
+        def execute(flag:); flag.inspect; end
+      end
+      expect(klass.new.execute_with_validation({ "flag" => false })).to eq("false")
+    end
   end
 end
