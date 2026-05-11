@@ -7,10 +7,14 @@ require 'fileutils'
 module RCrewAI
   module Tools
     class FileWriter < Base
+      tool_name        "file_writer"
+      description      "Write content to a text file on disk"
+      param :path,     type: :string,  required: true, description: "Path to write to"
+      param :content,  type: :string,  required: true, description: "Content to write"
+      param :append,   type: :boolean, default: false, description: "Append instead of overwrite"
+
       def initialize(**options)
         super()
-        @name = 'filewriter'
-        @description = 'Write content to files'
         @max_file_size = options.fetch(:max_file_size, 10_000_000) # 10MB
         @allowed_extensions = options.fetch(:allowed_extensions, %w[.txt .md .json .yaml .yml .csv .log])
         @create_directories = options.fetch(:create_directories, true)

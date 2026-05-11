@@ -8,10 +8,15 @@ require 'fileutils'
 module RCrewAI
   module Tools
     class CodeExecutor < Base
+      tool_name        "code_executor"
+      description      "Execute code in a sandboxed subprocess"
+      param :code,     type: :string, required: true, description: "Source code to run"
+      param :language, type: :enum,   required: true, values: %w[ruby python javascript bash],
+                       description: "Language of the code"
+      param :timeout,  type: :integer, default: 30, description: "Max execution seconds"
+
       def initialize(**options)
         super()
-        @name = 'codeexecutor'
-        @description = 'Execute code in various programming languages (Python, Ruby, JavaScript, etc.)'
         @timeout = options.fetch(:timeout, 30)
         @max_output_size = options.fetch(:max_output_size, 100_000)  # 100KB
         @allowed_languages = options.fetch(:allowed_languages, %w[python ruby javascript bash])

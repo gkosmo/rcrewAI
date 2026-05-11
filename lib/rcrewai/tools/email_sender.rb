@@ -7,10 +7,15 @@ require 'mail'
 module RCrewAI
   module Tools
     class EmailSender < Base
+      tool_name        "email_sender"
+      description      "Send an email via configured SMTP"
+      param :to,      type: :string,  required: true, description: "Recipient address"
+      param :subject, type: :string,  required: true, description: "Email subject"
+      param :body,    type: :string,  required: true, description: "Email body (plain text)"
+      param :html,    type: :boolean, default: false, description: "Treat body as HTML"
+
       def initialize(**options)
         super()
-        @name = 'emailsender'
-        @description = 'Send emails via SMTP'
         @smtp_server = options[:smtp_server] || 'localhost'
         @smtp_port = options[:smtp_port] || 587
         @username = options[:username]
