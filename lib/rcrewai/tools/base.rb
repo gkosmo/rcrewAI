@@ -40,12 +40,15 @@ module RCrewAI
         schema_params.each do |p|
           key_str = p[:name].to_s
           key_sym = p[:name].to_sym
-          if args_hash.key?(key_str) || args_hash.key?(key_sym)
-            raw = args_hash[key_str] || args_hash[key_sym]
-            coerced[key_sym] = coerce(raw, p[:type], p[:name])
-          elsif p[:required]
-            raise ToolError, "missing required param: #{p[:name]}"
+          if args_hash.key?(key_str)
+            raw = args_hash[key_str]
+          elsif args_hash.key?(key_sym)
+            raw = args_hash[key_sym]
+          else
+            raise ToolError, "missing required param: #{p[:name]}" if p[:required]
+            next
           end
+          coerced[key_sym] = coerce(raw, p[:type], p[:name])
         end
 
         execute(**coerced)
