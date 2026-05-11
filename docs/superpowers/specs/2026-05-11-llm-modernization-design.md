@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-11
 **Status:** Approved design (pending implementation plan)
-**Target version:** `rcrewai` 0.2.0
+**Target version:** `rcrewai` 0.3.0 (current is 0.2.1)
 **Scope:** Replace prompt-engineered ReAct tool calls with native function calling across all five LLM providers; add a typed streaming event model; add an MCP (Model Context Protocol) client so RCrewAI agents can consume external MCP servers as ordinary tools.
 
 ---
@@ -391,9 +391,9 @@ No new gem dependency. We hand-roll a minimal JSON-RPC 2.0 client (~100 LOC) sin
 
 ### Versioning
 
-**0.2.0** — minor bump under 1.0 conventions. CHANGELOG explicitly lists the two hard breaks above.
+**0.3.0** — minor bump under 1.0 conventions. CHANGELOG explicitly lists the two hard breaks above.
 
-### Migration guide (`docs/upgrading-to-0.2.md`)
+### Migration guide (`docs/upgrading-to-0.3.md`)
 
 1. *(Optional, recommended)* Add `tool_name`, `description`, `param` declarations to custom tools. Before/after example provided.
 2. *(Optional)* Adopt streaming via `crew.execute(stream: ...) { |event| ... }`.
@@ -402,7 +402,7 @@ No new gem dependency. We hand-roll a minimal JSON-RPC 2.0 client (~100 LOC) sin
 
 ### Companion gem (`rcrewai-rails`)
 
-Needs a coordinated release. The Rails engine's `Crew#execute` ActiveJob wrapper will gain a `stream:` parameter that pipes events into ActionCable for live UI. Tracked as a follow-up issue, not blocking 0.2.0 of the core gem.
+Needs a coordinated release. The Rails engine's `Crew#execute` ActiveJob wrapper will gain a `stream:` parameter that pipes events into ActionCable for live UI. Tracked as a follow-up issue, not blocking 0.3.0 of the core gem.
 
 ---
 
@@ -474,6 +474,6 @@ spec/
 7. Ollama native tools (allowlist) + streaming + ReAct fallback.
 8. `Pricing` + cost on `Events::Usage`.
 9. MCP transports (stdio, HTTP) + `Client` + `ToolAdapter`.
-10. CHANGELOG, `docs/upgrading-to-0.2.md`, `docs/mcp.md`, examples.
+10. CHANGELOG, `docs/upgrading-to-0.3.md`, `docs/mcp.md`, examples.
 
 The implementation plan (writing-plans skill) will refine this into discrete, testable tasks with explicit dependencies.
