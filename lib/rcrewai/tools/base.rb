@@ -8,12 +8,9 @@ module RCrewAI
       extend RCrewAI::ToolSchema
 
       def initialize
-        # Subclasses that don't use the DSL can override @name and @description here.
-        # We only set defaults when the class has an actual name (not anonymous).
-        if self.class.name
-          @name = self.class.name.split('::').last.downcase
-          @description = 'Base tool class'
-        end
+        # @name and @description are no longer set here.
+        # Instance #name and #description delegate to the class-level DSL
+        # (tool_name / description) via the fallback in the reader methods below.
       end
 
       def name

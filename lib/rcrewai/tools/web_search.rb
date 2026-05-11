@@ -8,10 +8,15 @@ require 'uri'
 module RCrewAI
   module Tools
     class WebSearch < Base
+      tool_name        "web_search"
+      description      "Search the web using DuckDuckGo and return top results"
+      param :query,       type: :string,  required: true,
+                          description: "Search query"
+      param :max_results, type: :integer, default: 10,
+                          description: "Number of results to return (1-25)"
+
       def initialize(**options)
         super()
-        @name = 'websearch'
-        @description = 'Search the web for information using DuckDuckGo'
         @max_results = options.fetch(:max_results, 5)
         @timeout = options.fetch(:timeout, 30)
       end

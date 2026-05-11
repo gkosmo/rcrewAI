@@ -7,10 +7,13 @@ require 'pathname'
 module RCrewAI
   module Tools
     class PdfProcessor < Base
+      tool_name        "pdf_processor"
+      description      "Extract text from a PDF file"
+      param :path,      type: :string,  required: true, description: "Path to the PDF"
+      param :max_pages, type: :integer, default: 100,   description: "Maximum pages to read"
+
       def initialize(**options)
         super()
-        @name = 'pdfprocessor'
-        @description = 'Read and extract text from PDF files'
         @max_file_size = options.fetch(:max_file_size, 50_000_000) # 50MB
         @max_pages = options.fetch(:max_pages, 100)
         @extract_metadata = options.fetch(:extract_metadata, true)
