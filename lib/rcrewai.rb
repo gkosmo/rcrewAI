@@ -18,6 +18,9 @@ end
 # Load all components manually to ensure proper order
 require_relative 'rcrewai/version'
 require_relative 'rcrewai/configuration'
+require_relative 'rcrewai/events'
+require_relative 'rcrewai/sse_parser'
+require_relative 'rcrewai/pricing'
 require_relative 'rcrewai/llm_client'
 require_relative 'rcrewai/memory'
 require_relative 'rcrewai/human_input'
