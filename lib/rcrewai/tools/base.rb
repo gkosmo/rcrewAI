@@ -1,13 +1,54 @@
 # frozen_string_literal: true
 
+require_relative '../tool_schema'
+
 module RCrewAI
   module Tools
     class Base
-      attr_reader :name, :description
+      extend RCrewAI::ToolSchema
 
       def initialize
-        @name = self.class.name.split('::').last.downcase
-        @description = 'Base tool class'
+        # Subclasses that don't use the DSL can override @name and @description here.
+        # We only set defaults when the class has an actual name (not anonymous).
+        if self.class.name
+          @name = self.class.name.split('::').last.downcase
+          @description = 'Base tool class'
+        end
+      end
+
+      def name
+        @name || self.class.tool_name
+      end
+
+      def description
+        @description || self.class.description
+      end
+
+      def json_schema
+        self.class.json_schema
+      end
+
+      def execute_with_validation(args_hash)
+        coerced = {}
+        schema_params = self.class.params
+
+        if schema_params.empty?
+          coerced = args_hash.transform_keys(&:to_sym)
+          return execute(**coerced)
+        end
+
+        schema_params.each do |p|
+          key_str = p[:name].to_s
+          key_sym = p[:name].to_sym
+          if args_hash.key?(key_str) || args_hash.key?(key_sym)
+            raw = args_hash[key_str] || args_hash[key_sym]
+            coerced[key_sym] = coerce(raw, p[:type], p[:name])
+          elsif p[:required]
+            raise ToolError, "missing required param: #{p[:name]}"
+          end
+        end
+
+        execute(**coerced)
       end
 
       def execute(**params)
@@ -72,6 +113,30 @@ module RCrewAI
           'codeexecutor' => 'Execute code in various programming languages',
           'pdfprocessor' => 'Read and extract text from PDF files'
         }
+      end
+
+      private
+
+      def coerce(value, type, name)
+        case type
+        when :integer
+          return value if value.is_a?(Integer)
+          Integer(value.to_s)
+        when :number
+          return value if value.is_a?(Numeric)
+          Float(value.to_s)
+        when :boolean
+          return value if [true, false].include?(value)
+          %w[true 1 yes].include?(value.to_s.downcase)
+        when :string, :enum
+          value.to_s
+        when :array, :object
+          value
+        else
+          value
+        end
+      rescue ArgumentError, TypeError
+        raise ToolError, "#{name} must be #{type}, got #{value.inspect}"
       end
     end
 
