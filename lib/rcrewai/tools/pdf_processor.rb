@@ -9,8 +9,9 @@ module RCrewAI
     class PdfProcessor < Base
       tool_name        "pdf_processor"
       description      "Extract text from a PDF file"
-      param :path,      type: :string,  required: true, description: "Path to the PDF"
-      param :max_pages, type: :integer, default: 100,   description: "Maximum pages to read"
+      param :file_path, type: :string, required: true, description: "Path to the PDF"
+      param :pages,     type: :string, required: false,
+                        description: "Page selector: 'all', a range like '1-5', or comma-separated like '1,3,5'"
 
       def initialize(**options)
         super()

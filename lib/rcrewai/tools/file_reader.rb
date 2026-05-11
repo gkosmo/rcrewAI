@@ -8,10 +8,12 @@ module RCrewAI
     class FileReader < Base
       tool_name        "file_reader"
       description      "Read the contents of a text file from disk"
-      param :path,     type: :string, required: true,
-                       description: "Absolute or relative path to the file"
-      param :encoding, type: :string, default: "utf-8",
-                       description: "Text encoding"
+      param :file_path, type: :string,  required: true,
+                        description: "Absolute or relative path to the file"
+      param :encoding,  type: :string,  default: "utf-8",
+                        description: "Text encoding (e.g. utf-8, iso-8859-1)"
+      param :lines,     type: :integer, required: false,
+                        description: "If set, read only the first N lines"
 
       def initialize(**options)
         super()

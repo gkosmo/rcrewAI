@@ -104,15 +104,9 @@ module RCrewAI
       end
 
       def self.list_available_tools
-        {
-          'websearch' => 'Search the web using DuckDuckGo',
-          'filereader' => 'Read contents from text files',
-          'filewriter' => 'Write content to text files',
-          'sqldatabase' => 'Execute SQL queries against databases',
-          'emailsender' => 'Send emails via SMTP',
-          'codeexecutor' => 'Execute code in various programming languages',
-          'pdfprocessor' => 'Read and extract text from PDF files'
-        }
+        available_tools.each_with_object({}) do |klass, h|
+          h[klass.tool_name] = klass.description
+        end
       end
 
       private

@@ -9,9 +9,12 @@ module RCrewAI
     class FileWriter < Base
       tool_name        "file_writer"
       description      "Write content to a text file on disk"
-      param :path,     type: :string,  required: true, description: "Path to write to"
-      param :content,  type: :string,  required: true, description: "Content to write"
-      param :append,   type: :boolean, default: false, description: "Append instead of overwrite"
+      param :file_path, type: :string, required: true, description: "Path to write to"
+      param :content,   type: :string, required: true, description: "Content to write"
+      param :mode,      type: :enum,   default: "w",   values: %w[w a],
+                        description: "Write mode: 'w' to overwrite, 'a' to append"
+      param :encoding,  type: :string, default: "utf-8",
+                        description: "Text encoding"
 
       def initialize(**options)
         super()

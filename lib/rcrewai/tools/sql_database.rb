@@ -8,10 +8,10 @@ module RCrewAI
     class SqlDatabase < Base
       tool_name        "sql_database"
       description      "Execute a read-only SQL query and return rows as JSON"
-      param :query,             type: :string, required: true,
-                                description: "SQL query (SELECT only by default)"
-      param :connection_string, type: :string, required: false,
-                                description: "Optional override for the configured DB URL"
+      param :query, type: :string,  required: true,
+                    description: "SQL query (SELECT only; write keywords are rejected)"
+      param :limit, type: :integer, required: false,
+                    description: "Optional maximum number of rows to return"
 
       def initialize(**options)
         super()

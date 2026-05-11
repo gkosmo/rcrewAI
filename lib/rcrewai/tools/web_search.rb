@@ -12,7 +12,7 @@ module RCrewAI
       description      "Search the web using DuckDuckGo and return top results"
       param :query,       type: :string,  required: true,
                           description: "Search query"
-      param :max_results, type: :integer, default: 10,
+      param :max_results, type: :integer, default: 5,
                           description: "Number of results to return (1-25)"
 
       def initialize(**options)
