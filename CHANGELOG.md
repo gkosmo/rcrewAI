@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-12
+
+### Added
+- Native function calling across all five providers (OpenAI, Anthropic, Google, Azure, Ollama). Tools declare a JSON schema via the new DSL (`tool_name`, `description`, `param`) on `Tools::Base`.
+- Typed streaming event model (`RCrewAI::Events::*`) covering text deltas, tool-call lifecycle, usage, and errors. Pass `stream:` to `crew.execute` or `agent.execute_task`.
+- MCP (Model Context Protocol) client. Connect to stdio or HTTP MCP servers and expose their tools as ordinary RCrewAI tools (`RCrewAI::MCP::Client.with_connection`).
+- Per-model price table (`RCrewAI::Pricing`) and `cost_usd` on `Events::Usage` for cost tracking.
+- `Tools::Base#execute_with_validation` coerces and validates args against the DSL schema.
+- New `ToolRunner` (native function calling loop) and `LegacyReactRunner` (extracted `USE_TOOL[]` parsing loop).
+- `RCrewAI::SSEParser` — reusable Server-Sent Events parser used by all providers and MCP HTTP transport.
+
+### Changed
+- `Agent#execute_task` now delegates to `ToolRunner` (native function calling) or `LegacyReactRunner` (existing `USE_TOOL[]` parsing, used as fallback for legacy models or tools without a DSL declaration).
+- `Agent#execute_task` return value is now a hash including `:content`, `:tool_calls_history`, `:usage`, `:iterations`, `:finish_reason`. `task.result` continues to hold the string content.
+- `LLMClients::Base#chat` gains `tools:`, `tool_choice:`, and `stream:` keyword arguments.
+- Provider clients return symbolic `finish_reason` (`:stop`, `:tool_calls`, `:length`) and symbol-keyed `usage`.
+
+### Breaking
+- Subclasses of `LLMClients::Base` that override `chat` with an explicit kwarg list must add `tools: nil, stream: nil` to the signature (or accept `**options`).
+- Tools without DSL declarations now receive a permissive fallback schema and emit a one-time deprecation warning to stderr.
+
+### Migration
+- See `docs/upgrading-to-0.3.md` for step-by-step migration.
+
 ## [0.1.0] - 2025-01-12
 
 ### Added
