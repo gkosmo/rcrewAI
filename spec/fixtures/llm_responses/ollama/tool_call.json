@@ -1,0 +1,13 @@
+{
+  "model": "llama3.1",
+  "message": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      { "function": { "name": "web_search", "arguments": { "query": "ruby" } } }
+    ]
+  },
+  "done": true,
+  "prompt_eval_count": 50,
+  "eval_count": 10
+}

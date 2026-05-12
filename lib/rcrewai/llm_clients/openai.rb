@@ -58,8 +58,12 @@ module RCrewAI
 
       private
 
+      def chat_url
+        "#{@base_url}/chat/completions"
+      end
+
       def plain_chat(payload)
-        url = "#{@base_url}/chat/completions"
+        url = chat_url
         log_request(:post, url, payload)
         response = http_client.post(url, payload, build_headers.merge(auth_header))
         log_response(response)
@@ -68,7 +72,7 @@ module RCrewAI
       end
 
       def stream_chat(payload, sink)
-        url = "#{@base_url}/chat/completions"
+        url = chat_url
         log_request(:post, url, payload)
 
         assembled_text = +''
@@ -139,8 +143,12 @@ module RCrewAI
           usage: final_usage || {},
           finish_reason: finish_reason || :stop,
           model: config.model,
-          provider: :openai
+          provider: provider_name
         }
+      end
+
+      def provider_name
+        :openai
       end
 
       def streaming_post(url, payload, &on_chunk)
@@ -176,7 +184,7 @@ module RCrewAI
           },
           finish_reason: (choice['finish_reason'] || 'stop').to_sym,
           model: body['model'] || config.model,
-          provider: :openai
+          provider: provider_name
         }
       end
 

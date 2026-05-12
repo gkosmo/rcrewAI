@@ -1,0 +1,16 @@
+{
+  "candidates": [{
+    "content": {
+      "role": "model",
+      "parts": [
+        { "functionCall": { "name": "web_search", "args": { "query": "ruby" } } }
+      ]
+    },
+    "finishReason": "STOP"
+  }],
+  "usageMetadata": {
+    "promptTokenCount": 50,
+    "candidatesTokenCount": 10,
+    "totalTokenCount": 60
+  }
+}
