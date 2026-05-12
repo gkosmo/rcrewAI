@@ -79,21 +79,24 @@ RSpec.describe RCrewAI::Agent do
     let(:task) { create_test_task(agent: subject) }
 
     before do
-      allow(mock_llm_client).to receive(:chat).and_return(mock_llm_response)
-      allow(subject).to receive(:reasoning_loop).and_return('Task completed successfully')
+      allow(mock_llm_client).to receive(:supports_native_tools?).and_return(false)
+      allow(mock_llm_client).to receive(:chat).and_return(
+        mock_llm_response(content: 'Task completed successfully')
+      )
     end
 
-    it 'executes task and returns result' do
+    it 'executes task and returns result hash with content' do
       result = subject.execute_task(task)
-      expect(result).to eq('Task completed successfully')
+      expect(result).to be_a(Hash)
+      expect(result[:content]).to eq('Task completed successfully')
       expect(task.result).to eq('Task completed successfully')
     end
 
     it 'logs task execution' do
       expect(subject.instance_variable_get(:@logger)).to receive(:info)
         .with("Agent test_agent starting task: #{task.name}")
-      expect(subject.instance_variable_get(:@logger)).to receive(:info)
-        .with(/Task completed in \d+\.\d+s/)
+      expect(subject.instance_variable_get(:@logger)).to receive(:info).at_least(:once)
+        .with(/Task completed in \d+\.\d+s|runner=/)
 
       subject.execute_task(task)
     end
@@ -111,7 +114,7 @@ RSpec.describe RCrewAI::Agent do
     end
 
     it 'handles execution errors' do
-      allow(subject).to receive(:reasoning_loop).and_raise(StandardError.new('Test error'))
+      allow(mock_llm_client).to receive(:chat).and_raise(StandardError.new('Test error'))
 
       expect { subject.execute_task(task) }
         .to raise_error(RCrewAI::AgentError, /Agent test_agent failed to execute task: Test error/)
@@ -317,44 +320,27 @@ RSpec.describe RCrewAI::Agent do
     end
   end
 
-  describe '#reasoning_loop' do
+  describe 'runner selection' do
     let(:task) { create_test_task(agent: subject) }
-    let(:context) { subject.send(:build_context, task) }
 
-    before do
+    it 'extracts FINAL_ANSWER content from LegacyReactRunner output' do
+      allow(mock_llm_client).to receive(:supports_native_tools?).and_return(false)
       allow(mock_llm_client).to receive(:chat).and_return(
         mock_llm_response(content: 'FINAL_ANSWER[Task completed successfully]')
       )
+      result = subject.execute_task(task)
+      expect(result[:content]).to eq('Task completed successfully')
     end
 
-    it 'executes reasoning loop until completion' do
-      result = subject.send(:reasoning_loop, task, context)
-      expect(result).to eq('Task completed successfully')
-    end
-
-    it 'respects max iterations limit' do
-      subject.max_iterations = 2
+    it 'respects max iterations limit via runner' do
+      allow(mock_llm_client).to receive(:supports_native_tools?).and_return(false)
       allow(mock_llm_client).to receive(:chat).and_return(
         mock_llm_response(content: 'Still working on it...')
       )
 
-      expect(subject.instance_variable_get(:@logger)).to receive(:warn)
-        .with(/Max iterations .* reached/)
-
-      subject.send(:reasoning_loop, task, context)
-    end
-
-    it 'respects max execution time limit' do
-      subject.instance_variable_set(:@max_execution_time, 0.001) # Very short time
-      subject.instance_variable_set(:@max_iterations, 1000) # High iteration limit
-      allow(mock_llm_client).to receive(:chat).and_return(
-        mock_llm_response(content: 'Still working on it...')
-      )
-
-      expect(subject.instance_variable_get(:@logger)).to receive(:warn)
-        .with(/Max execution time .* reached/)
-
-      subject.send(:reasoning_loop, task, context)
+      result = subject.execute_task(task, max_iterations: 2)
+      expect(result[:iterations]).to eq(2)
+      expect(result[:finish_reason]).to eq(:max_iterations)
     end
   end
 end

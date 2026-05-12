@@ -4,6 +4,8 @@ require 'logger'
 require_relative 'llm_client'
 require_relative 'memory'
 require_relative 'tools/base'
+require_relative 'tool_runner'
+require_relative 'legacy_react_runner'
 require_relative 'human_input'
 
 module RCrewAI
@@ -33,30 +35,41 @@ module RCrewAI
       @subordinates = [] # For manager agents
     end
 
-    def execute_task(task)
+    def execute_task(task, stream: nil, **opts)
       @logger.info "Agent #{name} starting task: #{task.name}"
       start_time = Time.now
 
       begin
-        # Build context for the agent
-        context = build_context(task)
+        initial_messages = build_initial_messages(task)
+        sink = stream || ->(_) {}
 
-        # Execute task with reasoning loop
-        result = reasoning_loop(task, context)
+        runner_class = pick_runner_class
+        @logger.info "[rcrewai] agent=#{name} runner=#{runner_class.name.split('::').last}"
 
+        runner = runner_class.new(
+          agent: self, llm: @llm_client, tools: @tools,
+          max_iterations: opts.fetch(:max_iterations, max_iterations),
+          event_sink: sink
+        )
+
+        runner_result = runner.run(messages: initial_messages)
         execution_time = Time.now - start_time
         @logger.info "Task completed in #{execution_time.round(2)}s"
 
-        # Store in memory
-        memory.add_execution(task, result, execution_time)
+        result_string = runner_result[:content].to_s
+        memory.add_execution(task, result_string, execution_time)
+        task.result = result_string
 
-        task.result = result
-        result
+        build_task_result(task, runner_result)
       rescue StandardError => e
         @logger.error "Task execution failed: #{e.message}"
         task.result = "Task failed: #{e.message}"
         raise AgentError, "Agent #{name} failed to execute task: #{e.message}"
       end
+    end
+
+    def require_approval_for_tools?
+      @require_approval_for_tools && @human_input_enabled
     end
 
     def available_tools_description
@@ -199,185 +212,50 @@ module RCrewAI
       context
     end
 
-    def reasoning_loop(task, context)
-      iteration = 0
-      start_time = Time.now
-
-      loop do
-        iteration += 1
-        current_time = Time.now
-
-        # Check limits
-        if iteration > max_iterations
-          @logger.warn "Max iterations (#{max_iterations}) reached"
-          break
-        end
-
-        if current_time - start_time > max_execution_time
-          @logger.warn "Max execution time (#{max_execution_time}s) reached"
-          break
-        end
-
-        # Human review of reasoning at key points
-        if @human_input_enabled && (iteration == 1 || (iteration % 3).zero?)
-          review_result = request_reasoning_review(task, context, iteration)
-          if review_result && review_result[:feedback]
-            context[:human_guidance] = review_result[:feedback]
-            @logger.info 'Incorporating human guidance into reasoning'
-          end
-        end
-
-        # Generate reasoning prompt
-        prompt = build_reasoning_prompt(context, iteration)
-
-        # Get LLM response
-        @logger.debug "Iteration #{iteration}: Sending prompt to LLM"
-        response = llm_client.chat(
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.1,
-          max_tokens: 2000
-        )
-
-        reasoning = response[:content]
-        @logger.debug "LLM Response: #{reasoning[0..200]}..." if verbose
-
-        # Parse and execute actions
-        action_result = parse_and_execute_actions(reasoning, task)
-
-        # Check if task is complete
-        if task_complete?(reasoning, action_result)
-          final_result = extract_final_result(reasoning, action_result)
-
-          # Human approval of final result if required
-          if @require_approval_for_final_answer && @human_input_enabled
-            final_result = request_final_answer_approval(final_result)
-          end
-
-          @logger.info "Task completed successfully in #{iteration} iterations"
-          return final_result
-        end
-
-        # Update context with new information
-        context[:previous_reasoning] = reasoning
-        context[:previous_result] = action_result
-        context[:iteration] = iteration
+    def build_initial_messages(task)
+      ctx = build_context(task)
+      system = +"You are #{ctx[:agent_role]}. Goal: #{ctx[:agent_goal]}."
+      system << " #{ctx[:agent_backstory]}" if ctx[:agent_backstory]
+      if @tools.any?
+        system << "\nAvailable Tools:\n#{ctx[:available_tools]}"
+        system << "\nYou may call tools by name when needed."
       end
+      system << "\n#{ctx[:delegation_note]}" if ctx[:delegation_note]
 
-      # If we exit the loop without completion, return best effort result
-      final_result = extract_final_result(context[:previous_reasoning], context[:previous_result]) ||
-                     'Task execution reached limits without clear completion'
+      user = +"Task: #{task.description}"
+      user << "\nExpected Output: #{task.expected_output}" if task.expected_output
+      user << "\nAdditional Context:\n#{ctx[:context_data]}" if ctx[:context_data] && !ctx[:context_data].to_s.empty?
 
-      # Human approval even for incomplete results if required
-      if @require_approval_for_final_answer && @human_input_enabled
-        final_result = request_final_answer_approval(final_result)
-      end
-
-      final_result
+      [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ]
     end
 
-    def build_reasoning_prompt(context, iteration)
-      <<~PROMPT
-        You are #{context[:agent_role]}.
-
-        Your goal: #{context[:agent_goal]}
-
-        Background: #{context[:agent_backstory]}
-
-        Current Task: #{context[:task_description]}
-        Expected Output: #{context[:task_expected_output]}
-
-        Available Tools:
-        #{context[:available_tools]}
-
-        #{context[:delegation_note] if context[:delegation_note]}
-
-        #{build_context_section(context)}
-
-        This is iteration #{iteration}. Think step by step about how to approach this task.
-
-        You can:
-        1. Use tools by writing: USE_TOOL[tool_name](param1=value1, param2=value2)
-        2. Provide your final answer when ready: FINAL_ANSWER[your complete response]
-        3. Continue reasoning if you need more information
-
-        What is your next step?
-      PROMPT
+    def build_task_result(task, runner_result)
+      {
+        task: task.name,
+        agent: name,
+        content: runner_result[:content],
+        tool_calls_history: runner_result[:tool_calls_history] || [],
+        usage: runner_result[:usage] || {},
+        iterations: runner_result[:iterations],
+        finish_reason: runner_result[:finish_reason]
+      }
     end
 
-    def build_context_section(context)
-      sections = []
-
-      if context[:context_data] && !context[:context_data].empty?
-        sections << "Additional Context:\n#{context[:context_data]}"
-      end
-
-      if context[:previous_executions] && !context[:previous_executions].empty?
-        sections << "Previous Similar Tasks:\n#{context[:previous_executions]}"
-      end
-
-      sections << "Human Guidance:\n#{context[:human_guidance]}" if context[:human_guidance]
-
-      sections << "Previous Reasoning:\n#{context[:previous_reasoning]}" if context[:previous_reasoning]
-
-      sections << "Previous Action Result:\n#{context[:previous_result]}" if context[:previous_result]
-
-      sections.join("\n\n")
+    def pick_runner_class
+      schemas_ok = @tools.empty? || @tools.all? { |t| t.respond_to?(:json_schema) && t.json_schema }
+      native = @llm_client.respond_to?(:supports_native_tools?) &&
+               safe_supports_native?(@llm_client)
+      schemas_ok && native ? ToolRunner : LegacyReactRunner
     end
 
-    def parse_and_execute_actions(reasoning, _task)
-      results = []
-
-      # Look for tool usage patterns
-      tool_matches = reasoning.scan(/USE_TOOL\[(\w+)\]\(([^)]*)\)/)
-      tool_matches.each do |tool_name, params_str|
-        params = parse_tool_params(params_str)
-        result = use_tool(tool_name, **params)
-        results << "Tool #{tool_name} result: #{result}"
-      rescue StandardError => e
-        results << "Tool #{tool_name} failed: #{e.message}"
-        @logger.error "Tool execution failed: #{e.message}"
-      end
-
-      results.join("\n")
-    end
-
-    def parse_tool_params(params_str)
-      params = {}
-      return params if params_str.strip.empty?
-
-      param_pairs = params_str.split(',').map(&:strip)
-      param_pairs.each do |pair|
-        key, value = pair.split('=', 2).map(&:strip)
-        next unless key && value
-
-        # Remove quotes if present
-        value = value.gsub(/^["']|["']$/, '')
-        params[key.to_sym] = value
-      end
-
-      params
-    end
-
-    def task_complete?(reasoning, _action_result)
-      reasoning.include?('FINAL_ANSWER[') ||
-        reasoning.downcase.include?('task complete') ||
-        reasoning.downcase.include?('finished')
-    end
-
-    def extract_final_result(reasoning, action_result)
-      # Look for FINAL_ANSWER pattern
-      if (match = reasoning.match(/FINAL_ANSWER\[(.*?)\]$/m))
-        return match[1].strip
-      end
-
-      # Otherwise try to extract meaningful result from reasoning
-      lines = reasoning.split("\n").map(&:strip).reject(&:empty?)
-      final_lines = lines.last(3).join(' ')
-
-      return final_lines if final_lines.length > 20
-
-      # Fallback to action result
-      action_result
+    def safe_supports_native?(llm)
+      model = llm.respond_to?(:config) && llm.config.respond_to?(:model) ? llm.config.model : nil
+      llm.supports_native_tools?(model: model)
+    rescue StandardError
+      false
     end
 
     # Manager-specific private methods

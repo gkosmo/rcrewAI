@@ -2,6 +2,7 @@
 
 require_relative 'process'
 require_relative 'async_executor'
+require_relative 'events'
 
 module RCrewAI
   class Crew
@@ -28,13 +29,22 @@ module RCrewAI
       @tasks << task
     end
 
-    def execute(async: false, **async_options)
+    def execute(async: false, stream: nil, **async_options, &block)
+      sinks = []
+      sinks << block if block_given?
+      if stream
+        Array(stream).each { |s| sinks << s }
+      end
+      @stream_sink = sinks.empty? ? nil : RCrewAI::Events.fan_out(sinks)
+
       if async
         execute_async(**async_options)
       else
         execute_sync
       end
     end
+
+    attr_reader :stream_sink
 
     def execute_async(**options)
       puts "Executing crew: #{name} (async #{process_type} process)"
