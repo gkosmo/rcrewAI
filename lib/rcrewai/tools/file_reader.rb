@@ -15,15 +15,15 @@ module RCrewAI
       end
 
       def execute(**params)
-        validate_params!(params, required: [:file_path], optional: [:encoding, :lines])
-        
+        validate_params!(params, required: [:file_path], optional: %i[encoding lines])
+
         file_path = params[:file_path]
         encoding = params[:encoding] || 'utf-8'
         lines = params[:lines] # Optional: read only N lines
-        
+
         begin
           read_file(file_path, encoding, lines)
-        rescue => e
+        rescue StandardError => e
           "File read failed: #{e.message}"
         end
       end
@@ -32,17 +32,17 @@ module RCrewAI
 
       def read_file(file_path, encoding, lines = nil)
         path = Pathname.new(file_path)
-        
+
         # Security checks
         validate_file_path!(path)
         validate_file_size!(path)
         validate_file_extension!(path)
-        
+
         content = if lines
-                   read_lines(path, encoding, lines)
-                 else
-                   read_full_file(path, encoding)
-                 end
+                    read_lines(path, encoding, lines)
+                  else
+                    read_full_file(path, encoding)
+                  end
 
         format_file_content(path, content, lines)
       end
@@ -51,27 +51,27 @@ module RCrewAI
         raise ToolError, "File does not exist: #{path}" unless path.exist?
         raise ToolError, "Path is not a file: #{path}" unless path.file?
         raise ToolError, "File is not readable: #{path}" unless path.readable?
-        
+
         # Prevent directory traversal
         resolved_path = path.realpath.to_s
         working_dir = Dir.pwd
-        unless resolved_path.start_with?(working_dir)
-          raise ToolError, "Access denied: file outside working directory"
-        end
+        return if resolved_path.start_with?(working_dir)
+
+        raise ToolError, 'Access denied: file outside working directory'
       end
 
       def validate_file_size!(path)
         size = path.size
-        if size > @max_file_size
-          raise ToolError, "File too large: #{size} bytes (max: #{@max_file_size})"
-        end
+        return unless size > @max_file_size
+
+        raise ToolError, "File too large: #{size} bytes (max: #{@max_file_size})"
       end
 
       def validate_file_extension!(path)
         extension = path.extname.downcase
-        unless @allowed_extensions.include?(extension) || @allowed_extensions.include?('*')
-          raise ToolError, "File type not allowed: #{extension}"
-        end
+        return if @allowed_extensions.include?(extension) || @allowed_extensions.include?('*')
+
+        raise ToolError, "File type not allowed: #{extension}"
       end
 
       def read_lines(path, encoding, line_count)
@@ -80,6 +80,7 @@ module RCrewAI
           line_count.times do
             line = file.gets
             break unless line
+
             lines << line.chomp
           end
         end
@@ -95,15 +96,15 @@ module RCrewAI
         header += " (first #{lines} lines)" if lines
         header += "\nSize: #{path.size} bytes"
         header += "\nModified: #{path.mtime.strftime('%Y-%m-%d %H:%M:%S')}"
-        header += "\n" + "="*50 + "\n"
-        
+        header += "\n#{'=' * 50}\n"
+
         # Truncate very long content for display
         display_content = if content.length > 5000
-                           content[0..4997] + "..."
-                         else
-                           content
-                         end
-        
+                            "#{content[0..4997]}..."
+                          else
+                            content
+                          end
+
         header + display_content
       end
     end

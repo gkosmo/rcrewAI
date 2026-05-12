@@ -2,14 +2,14 @@
 
 module RCrewAI
   class CLI < Thor
-    desc "new CREW_NAME", "Create a new AI crew"
+    desc 'new CREW_NAME', 'Create a new AI crew'
     def new(crew_name)
       puts "Creating new crew: #{crew_name}"
       Crew.create(crew_name)
     end
 
-    desc "run", "Run the AI crew"
-    option :crew, type: :string, required: true, desc: "Name of the crew to run"
+    desc 'run', 'Run the AI crew'
+    option :crew, type: :string, required: true, desc: 'Name of the crew to run'
     def run
       crew_name = options[:crew]
       puts "Running crew: #{crew_name}"
@@ -17,21 +17,21 @@ module RCrewAI
       crew.execute
     end
 
-    desc "list", "List all available crews"
+    desc 'list', 'List all available crews'
     def list
-      puts "Available crews:"
+      puts 'Available crews:'
       Crew.list.each do |crew|
         puts "  - #{crew}"
       end
     end
 
-    desc "agent SUBCOMMAND ...ARGS", "Manage agents"
-    subcommand "agent", Agent::CLI
+    desc 'agent SUBCOMMAND ...ARGS', 'Manage agents'
+    subcommand 'agent', Agent::CLI
 
-    desc "task SUBCOMMAND ...ARGS", "Manage tasks"
-    subcommand "task", Task::CLI
+    desc 'task SUBCOMMAND ...ARGS', 'Manage tasks'
+    subcommand 'task', Task::CLI
 
-    desc "version", "Show version"
+    desc 'version', 'Show version'
     def version
       puts "rcrewai version #{RCrewAI::VERSION}"
     end

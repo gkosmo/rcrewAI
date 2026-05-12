@@ -5,7 +5,7 @@ require 'spec_helper'
 RSpec.describe RCrewAI::Agent do
   let(:mock_llm_client) { double('LLMClient') }
   let(:mock_tool) { double('Tool', name: 'test_tool', description: 'A test tool') }
-  
+
   before do
     configure_test_llm
     allow(RCrewAI::LLMClient).to receive(:for_provider).and_return(mock_llm_client)
@@ -94,7 +94,7 @@ RSpec.describe RCrewAI::Agent do
         .with("Agent test_agent starting task: #{task.name}")
       expect(subject.instance_variable_get(:@logger)).to receive(:info)
         .with(/Task completed in \d+\.\d+s/)
-      
+
       subject.execute_task(task)
     end
 
@@ -106,16 +106,16 @@ RSpec.describe RCrewAI::Agent do
     it 'stores execution in memory' do
       expect(subject.memory).to receive(:add_execution)
         .with(task, 'Task completed successfully', anything)
-      
+
       subject.execute_task(task)
     end
 
     it 'handles execution errors' do
       allow(subject).to receive(:reasoning_loop).and_raise(StandardError.new('Test error'))
-      
+
       expect { subject.execute_task(task) }
         .to raise_error(RCrewAI::AgentError, /Agent test_agent failed to execute task: Test error/)
-      
+
       expect(task.result).to eq('Task failed: Test error')
     end
   end
@@ -158,7 +158,7 @@ RSpec.describe RCrewAI::Agent do
     it 'stores tool usage in memory' do
       expect(subject.memory).to receive(:add_tool_usage)
         .with('test_tool', { param: 'value' }, 'Tool executed')
-      
+
       subject.use_tool('test_tool', param: 'value')
     end
 
@@ -172,7 +172,7 @@ RSpec.describe RCrewAI::Agent do
         expect(subject).to receive(:request_tool_approval)
           .with('test_tool', { param: 'value' })
           .and_return({ approved: true })
-        
+
         result = subject.use_tool('test_tool', param: 'value')
         expect(result).to eq('Tool executed')
       end
@@ -180,7 +180,7 @@ RSpec.describe RCrewAI::Agent do
       it 'rejects tool usage when human disapproves' do
         expect(subject).to receive(:request_tool_approval)
           .and_return({ approved: false, reason: 'Too risky' })
-        
+
         result = subject.use_tool('test_tool', param: 'value')
         expect(result).to include('Tool usage was rejected')
         expect(result).to include('Too risky')
@@ -238,7 +238,7 @@ RSpec.describe RCrewAI::Agent do
       it 'delegates task to subordinate' do
         expect(subordinate).to receive(:execute_delegated_task)
           .with(task, 'Delegation instructions', manager)
-        
+
         manager.delegate_task(task, subordinate)
       end
 
@@ -272,12 +272,12 @@ RSpec.describe RCrewAI::Agent do
 
     describe '#enable_human_input' do
       it 'enables human input capabilities' do
-        subject.disable_human_input  # Start with disabled state
+        subject.disable_human_input # Start with disabled state
         subject.enable_human_input(
           require_approval_for_tools: true,
           require_approval_for_final_answer: true
         )
-        
+
         expect(subject.human_input_enabled?).to be true
         expect(subject.instance_variable_get(:@require_approval_for_tools)).to be true
         expect(subject.instance_variable_get(:@require_approval_for_final_answer)).to be true

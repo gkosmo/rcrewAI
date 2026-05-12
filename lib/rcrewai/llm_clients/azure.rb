@@ -58,7 +58,7 @@ module RCrewAI
         url = "#{@base_url}/openai/deployments?api-version=#{@api_version}"
         response = http_client.get(url, {}, build_headers.merge(authorization_header))
         result = handle_response(response)
-        
+
         if result['data']
           result['data'].map { |deployment| deployment['id'] }
         else
@@ -111,25 +111,25 @@ module RCrewAI
 
       def validate_config!
         super
-        raise ConfigurationError, "Azure API key is required" unless config.azure_api_key || config.api_key
-        raise ConfigurationError, "Azure base URL or endpoint is required" unless config.base_url || azure_endpoint
-        raise ConfigurationError, "Azure deployment name is required" unless config.deployment_name || config.model
+        raise ConfigurationError, 'Azure API key is required' unless config.azure_api_key || config.api_key
+        raise ConfigurationError, 'Azure base URL or endpoint is required' unless config.base_url || azure_endpoint
+        raise ConfigurationError, 'Azure deployment name is required' unless config.deployment_name || config.model
       end
 
       def build_azure_url
         endpoint = azure_endpoint
         return nil unless endpoint
-        
+
         # Remove trailing slash and add proper path
         endpoint = endpoint.chomp('/')
-        "#{endpoint}"
+        endpoint.to_s
       end
 
       def azure_endpoint
         # Try multiple environment variable names
-        ENV['AZURE_OPENAI_ENDPOINT'] || 
-        ENV['AZURE_ENDPOINT'] || 
-        config.instance_variable_get(:@azure_endpoint)
+        ENV['AZURE_OPENAI_ENDPOINT'] ||
+          ENV['AZURE_ENDPOINT'] ||
+          config.instance_variable_get(:@azure_endpoint)
       end
 
       def handle_response(response)
@@ -140,13 +140,13 @@ module RCrewAI
           error_details = response.body.dig('error', 'message') || response.body
           raise APIError, "Bad request: #{error_details}"
         when 401
-          raise AuthenticationError, "Invalid API key or authentication failed"
+          raise AuthenticationError, 'Invalid API key or authentication failed'
         when 403
-          raise AuthenticationError, "Access denied - check your API key and permissions"
+          raise AuthenticationError, 'Access denied - check your API key and permissions'
         when 404
           raise ModelNotFoundError, "Deployment '#{@deployment_name}' not found"
         when 429
-          raise RateLimitError, "Rate limit exceeded or quota exhausted"
+          raise RateLimitError, 'Rate limit exceeded or quota exhausted'
         when 500..599
           raise APIError, "Azure OpenAI service error: #{response.status}"
         else

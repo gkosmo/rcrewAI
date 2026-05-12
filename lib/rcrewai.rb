@@ -1,17 +1,17 @@
 # frozen_string_literal: true
 
-require "thor"
-require "faraday"
-require "json"
-require "logger"
-require "concurrent"
-require "nokogiri"
+require 'thor'
+require 'faraday'
+require 'json'
+require 'logger'
+require 'concurrent'
+require 'nokogiri'
 
 module RCrewAI
   class Error < StandardError; end
-  
+
   def self.root
-    @root ||= Pathname.new(File.expand_path("..", __dir__))
+    @root ||= Pathname.new(File.expand_path('..', __dir__))
   end
 end
 
@@ -32,5 +32,5 @@ require_relative 'rcrewai/tools/pdf_processor'
 require_relative 'rcrewai/process'
 require_relative 'rcrewai/async_executor'
 require_relative 'rcrewai/agent'
-require_relative 'rcrewai/task'  
+require_relative 'rcrewai/task'
 require_relative 'rcrewai/crew'

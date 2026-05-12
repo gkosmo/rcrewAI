@@ -12,7 +12,7 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
            max_tokens: 1000,
            timeout: 60)
   end
-  
+
   subject { described_class.new(config) }
 
   it_behaves_like 'an LLM client'
@@ -56,14 +56,14 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
             max_tokens: 1000
           ),
           hash_including(
-            'Authorization' => 'Bearer test-anthropic-key',
+            'x-api-key' => 'test-anthropic-key',
             'anthropic-version' => '2023-06-01'
           )
         )
         .and_return(successful_response)
 
       result = subject.chat(messages: [{ role: 'user', content: 'Hello' }])
-      
+
       expect(result).to include(
         content: 'Hello! How can I assist you today?',
         role: 'assistant',
@@ -85,9 +85,9 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
         .and_return(successful_response)
 
       subject.chat(messages: [
-        { role: 'system', content: 'You are a helpful assistant' },
-        { role: 'user', content: 'Hello' }
-      ])
+                     { role: 'system', content: 'You are a helpful assistant' },
+                     { role: 'user', content: 'Hello' }
+                   ])
     end
 
     it 'includes Anthropic-specific options' do
@@ -113,9 +113,9 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
 
     it 'formats usage information correctly' do
       expect(mock_http).to receive(:post).and_return(successful_response)
-      
+
       result = subject.chat(messages: [{ role: 'user', content: 'Hello' }])
-      
+
       expect(result[:usage]).to include(
         'prompt_tokens' => 10,
         'completion_tokens' => 20,
@@ -125,15 +125,15 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
 
     it 'handles API errors with detailed messages' do
       error_response = double('Response',
-                             status: 400,
-                             body: {
-                               'error' => {
-                                 'message' => 'Invalid request format'
-                               }
-                             })
-      
+                              status: 400,
+                              body: {
+                                'error' => {
+                                  'message' => 'Invalid request format'
+                                }
+                              })
+
       allow(mock_http).to receive(:post).and_return(error_response)
-      
+
       expect { subject.chat(messages: ['Hello']) }
         .to raise_error(RCrewAI::LLMClients::APIError, /Invalid request format/)
     end
@@ -157,13 +157,13 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
         { role: 'user', content: 'Hello' },
         { role: 'assistant', content: 'Hi there!' }
       ]
-      
+
       formatted = subject.send(:format_messages, messages)
-      
+
       expect(formatted).to eq([
-        { role: 'user', content: 'Hello' },
-        { role: 'assistant', content: 'Hi there!' }
-      ])
+                                { role: 'user', content: 'Hello' },
+                                { role: 'assistant', content: 'Hi there!' }
+                              ])
     end
 
     it 'converts string messages to user messages' do
@@ -178,7 +178,7 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
         { role: 'system', content: 'You are helpful' },
         { role: 'user', content: 'Hello' }
       ]
-      
+
       system_content = subject.send(:extract_system_message, messages)
       expect(system_content).to eq('You are helpful')
     end
@@ -196,7 +196,7 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
                               api_key: nil,
                               anthropic_api_key: nil,
                               model: 'claude-3-sonnet')
-      
+
       expect { described_class.new(invalid_config) }
         .to raise_error(RCrewAI::ConfigurationError, /Anthropic API key is required/)
     end

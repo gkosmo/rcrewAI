@@ -38,7 +38,7 @@ module RCrewAI
 
       def complete(prompt:, **options)
         # For older models that use completions endpoint
-        if config.model.include?('davinci') || config.model.include?('curie') || 
+        if config.model.include?('davinci') || config.model.include?('curie') ||
            config.model.include?('babbage') || config.model.include?('ada')
           completion_request(prompt, **options)
         else
@@ -116,8 +116,8 @@ module RCrewAI
       end
 
       def validate_config!
-        raise ConfigurationError, "OpenAI API key is required" unless config.openai_api_key || config.api_key
-        raise ConfigurationError, "Model is required" unless config.model
+        raise ConfigurationError, 'OpenAI API key is required' unless config.openai_api_key || config.api_key
+        raise ConfigurationError, 'Model is required' unless config.model
       end
     end
   end

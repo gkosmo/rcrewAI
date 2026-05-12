@@ -12,7 +12,7 @@ module RCrewAI
       @timeout = options.fetch(:timeout, 300) # 5 minutes default
       @logger = Logger.new($stdout)
       @logger.level = options.fetch(:verbose, false) ? Logger::DEBUG : Logger::INFO
-      
+
       # Create thread pool for task execution
       @thread_pool = Concurrent::ThreadPoolExecutor.new(
         min_threads: 1,
@@ -20,7 +20,7 @@ module RCrewAI
         max_queue: @max_concurrency * 2,
         fallback_policy: :caller_runs
       )
-      
+
       @futures = {}
       @task_dependencies = {}
       @completed_tasks = Concurrent::Set.new
@@ -29,30 +29,30 @@ module RCrewAI
 
     def execute_tasks_async(tasks, dependency_graph = {})
       @logger.info "Starting async execution of #{tasks.length} tasks with max #{@max_concurrency} concurrent threads"
-      
+
       @task_dependencies = dependency_graph
       execution_phases = organize_tasks_by_dependencies(tasks)
-      
+
       start_time = Time.now
       results = []
-      
+
       execution_phases.each_with_index do |phase_tasks, phase_index|
         @logger.info "Executing phase #{phase_index + 1}: #{phase_tasks.length} tasks"
-        
+
         phase_results = execute_phase_concurrently(phase_tasks, phase_index + 1)
         results.concat(phase_results)
-        
+
         # Check if we should continue
         failed_in_phase = phase_results.count { |r| r[:status] == :failed }
-        if failed_in_phase > 0 && should_abort_after_failures?(failed_in_phase, phase_tasks.length)
+        if failed_in_phase.positive? && should_abort_after_failures?(failed_in_phase, phase_tasks.length)
           @logger.error "Aborting execution due to #{failed_in_phase} failures in phase #{phase_index + 1}"
           break
         end
       end
-      
+
       total_time = Time.now - start_time
       @logger.info "Async execution completed in #{total_time.round(2)}s"
-      
+
       format_async_results(results, total_time)
     end
 
@@ -60,38 +60,36 @@ module RCrewAI
       future = Concurrent::Future.execute(executor: @thread_pool) do
         execute_task_with_monitoring(task)
       end
-      
+
       @futures[task] = future
       future
     end
 
     def wait_for_completion(futures, timeout = nil)
       timeout ||= @timeout
-      
+
       results = []
       futures.each do |task, future|
-        begin
-          result = future.value(timeout)
-          results << { task: task, result: result, status: :completed }
-        rescue Concurrent::TimeoutError
-          @logger.error "Task #{task.name} timed out after #{timeout}s"
-          results << { task: task, result: "Task timed out", status: :timeout }
-        rescue => e
-          @logger.error "Task #{task.name} failed: #{e.message}"
-          results << { task: task, result: e.message, status: :failed }
-        end
+        result = future.value(timeout)
+        results << { task: task, result: result, status: :completed }
+      rescue Concurrent::TimeoutError
+        @logger.error "Task #{task.name} timed out after #{timeout}s"
+        results << { task: task, result: 'Task timed out', status: :timeout }
+      rescue StandardError => e
+        @logger.error "Task #{task.name} failed: #{e.message}"
+        results << { task: task, result: e.message, status: :failed }
       end
-      
+
       results
     end
 
     def shutdown
-      @logger.info "Shutting down async executor..."
+      @logger.info 'Shutting down async executor...'
       @thread_pool.shutdown
-      unless @thread_pool.wait_for_termination(30)
-        @logger.warn "Thread pool did not shut down gracefully, forcing shutdown"
-        @thread_pool.kill
-      end
+      return if @thread_pool.wait_for_termination(30)
+
+      @logger.warn 'Thread pool did not shut down gracefully, forcing shutdown'
+      @thread_pool.kill
     end
 
     def stats
@@ -136,7 +134,7 @@ module RCrewAI
 
     def execute_phase_concurrently(phase_tasks, phase_number)
       @logger.debug "Phase #{phase_number}: Launching #{phase_tasks.length} concurrent tasks"
-      
+
       # Launch all tasks in this phase concurrently
       phase_futures = {}
       phase_tasks.each do |task|
@@ -146,7 +144,7 @@ module RCrewAI
 
       # Wait for all tasks in this phase to complete
       phase_results = wait_for_completion(phase_futures)
-      
+
       # Update tracking sets
       phase_results.each do |result|
         case result[:status]
@@ -156,31 +154,33 @@ module RCrewAI
           @failed_tasks.add(result[:task])
         end
       end
-      
-      @logger.info "Phase #{phase_number} completed: #{phase_results.count { |r| r[:status] == :completed }}/#{phase_tasks.length} successful"
-      
+
+      @logger.info "Phase #{phase_number} completed: #{phase_results.count do |r|
+        r[:status] == :completed
+      end}/#{phase_tasks.length} successful"
+
       phase_results.map { |r| r.merge(phase: phase_number) }
     end
 
     def execute_task_with_monitoring(task)
       thread_id = Thread.current.object_id
       @logger.debug "Task #{task.name} starting on thread #{thread_id}"
-      
+
       start_time = Time.now
-      
+
       begin
         # Add async context to task
         task.instance_variable_set(:@async_execution, true)
         task.instance_variable_set(:@thread_id, thread_id)
-        
+
         # Execute the task
         result = task.execute
-        
+
         execution_time = Time.now - start_time
         @logger.debug "Task #{task.name} completed in #{execution_time.round(2)}s on thread #{thread_id}"
-        
+
         result
-      rescue => e
+      rescue StandardError => e
         execution_time = Time.now - start_time
         @logger.error "Task #{task.name} failed after #{execution_time.round(2)}s on thread #{thread_id}: #{e.message}"
         raise e
@@ -189,7 +189,7 @@ module RCrewAI
 
     def should_abort_after_failures?(failed_count, total_count)
       failure_rate = failed_count.to_f / total_count
-      
+
       # Abort if more than 50% of tasks in a phase fail
       failure_rate > 0.5
     end
@@ -198,7 +198,7 @@ module RCrewAI
       completed = results.count { |r| r[:status] == :completed }
       failed = results.count { |r| r[:status] == :failed }
       timed_out = results.count { |r| r[:status] == :timeout }
-      
+
       {
         execution_mode: :async,
         total_time: total_time,
@@ -227,7 +227,7 @@ module RCrewAI
     module ClassMethods
       def execute_async(tasks, **options)
         executor = AsyncExecutor.new(**options)
-        
+
         begin
           results = executor.execute_tasks_async(tasks)
           results

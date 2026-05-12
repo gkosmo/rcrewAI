@@ -15,7 +15,7 @@ module RCrewAI
       def chat(messages:, **options)
         # Convert messages to Gemini format
         formatted_contents = format_messages(messages)
-        
+
         payload = {
           contents: formatted_contents,
           generationConfig: {
@@ -27,14 +27,10 @@ module RCrewAI
         }
 
         # Add safety settings if provided
-        if options[:safety_settings]
-          payload[:safetySettings] = options[:safety_settings]
-        end
+        payload[:safetySettings] = options[:safety_settings] if options[:safety_settings]
 
         # Add stop sequences if provided
-        if options[:stop_sequences]
-          payload[:generationConfig][:stopSequences] = options[:stop_sequences]
-        end
+        payload[:generationConfig][:stopSequences] = options[:stop_sequences] if options[:stop_sequences]
 
         url = "#{@base_url}/models/#{config.model}:generateContent?key=#{config.api_key}"
         log_request(:post, url, payload)
@@ -63,25 +59,25 @@ module RCrewAI
 
       def format_messages(messages)
         contents = []
-        
+
         messages.each do |msg|
           role = case msg[:role]
-                when 'user'
-                  'user'
-                when 'assistant'
-                  'model'
-                when 'system'
-                  # Gemini doesn't have system role, prepend to first user message
-                  next
-                else
-                  'user'
-                end
+                 when 'user'
+                   'user'
+                 when 'assistant'
+                   'model'
+                 when 'system'
+                   # Gemini doesn't have system role, prepend to first user message
+                   next
+                 else
+                   'user'
+                 end
 
           content = if msg.is_a?(Hash)
-                     msg[:content]
-                   else
-                     msg.to_s
-                   end
+                      msg[:content]
+                    else
+                      msg.to_s
+                    end
 
           contents << {
             role: role,
@@ -131,7 +127,7 @@ module RCrewAI
 
       def validate_config!
         super
-        raise ConfigurationError, "Google API key is required" unless config.google_api_key || config.api_key
+        raise ConfigurationError, 'Google API key is required' unless config.google_api_key || config.api_key
       end
 
       def handle_response(response)
@@ -142,11 +138,11 @@ module RCrewAI
           error_details = response.body.dig('error', 'message') || response.body
           raise APIError, "Bad request: #{error_details}"
         when 401
-          raise AuthenticationError, "Invalid API key"
+          raise AuthenticationError, 'Invalid API key'
         when 403
-          raise AuthenticationError, "API key does not have permission"
+          raise AuthenticationError, 'API key does not have permission'
         when 429
-          raise RateLimitError, "Rate limit exceeded or quota exhausted"
+          raise RateLimitError, 'Rate limit exceeded or quota exhausted'
         when 500..599
           raise APIError, "Server error: #{response.status}"
         else

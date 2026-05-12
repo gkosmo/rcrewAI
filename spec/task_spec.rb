@@ -4,7 +4,7 @@ require 'spec_helper'
 
 RSpec.describe RCrewAI::Task do
   let(:agent) { create_test_agent }
-  
+
   subject do
     described_class.new(
       name: 'test_task',
@@ -78,7 +78,7 @@ RSpec.describe RCrewAI::Task do
 
     it 'executes task and sets result' do
       result = subject.execute
-      
+
       expect(result).to eq('Task completed')
       expect(subject.result).to eq('Task completed')
       expect(subject.status).to eq(:completed)
@@ -117,7 +117,7 @@ RSpec.describe RCrewAI::Task do
 
     it 'executes callback if provided' do
       callback_executed = false
-      callback = proc { |task, result| callback_executed = true }
+      callback = proc { |_task, _result| callback_executed = true }
 
       task = described_class.new(
         name: 'callback_task',
@@ -167,9 +167,9 @@ RSpec.describe RCrewAI::Task do
       it 'enables human input for agent during execution' do
         expect(agent).to receive(:enable_human_input)
           .with(hash_including(
-            require_approval_for_tools: false,
-            require_approval_for_final_answer: true
-          ))
+                  require_approval_for_tools: false,
+                  require_approval_for_final_answer: true
+                ))
 
         expect(agent).to receive(:disable_human_input)
         subject.execute
@@ -188,11 +188,9 @@ RSpec.describe RCrewAI::Task do
         call_count = 0
         allow(agent).to receive(:execute_task) do
           call_count += 1
-          if call_count < 2
-            raise StandardError.new('Temporary failure')
-          else
-            'Success on retry'
-          end
+          raise StandardError, 'Temporary failure' if call_count < 2
+
+          'Success on retry'
         end
 
         expect(subject).to receive(:sleep).with(2).once
@@ -228,11 +226,9 @@ RSpec.describe RCrewAI::Task do
           call_count = 0
           allow(agent).to receive(:execute_task) do
             call_count += 1
-            if call_count == 1
-              raise StandardError.new('Test failure')
-            else
-              'Recovered'
-            end
+            raise StandardError, 'Test failure' if call_count == 1
+
+            'Recovered'
           end
 
           result = subject.execute
@@ -246,16 +242,14 @@ RSpec.describe RCrewAI::Task do
             .and_return({ modified: true, changes: { 'description' => 'Modified description' } })
 
           allow(subject).to receive(:sleep)
-          
+
           # Mock second execution to succeed
           call_count = 0
           allow(agent).to receive(:execute_task) do
             call_count += 1
-            if call_count == 1
-              raise StandardError.new('Test failure')
-            else
-              'Modified and completed'
-            end
+            raise StandardError, 'Test failure' if call_count == 1
+
+            'Modified and completed'
           end
 
           subject.execute
@@ -282,7 +276,7 @@ RSpec.describe RCrewAI::Task do
       context_task = create_test_task(name: 'context_task')
       context_task.instance_variable_set(:@status, :completed)
       context_task.instance_variable_set(:@result, 'Context result')
-      
+
       subject.add_context_task(context_task)
       context_data = subject.context_data
 
@@ -293,7 +287,7 @@ RSpec.describe RCrewAI::Task do
     it 'shows status for incomplete context tasks' do
       context_task = create_test_task(name: 'pending_task')
       context_task.instance_variable_set(:@status, :running)
-      
+
       subject.add_context_task(context_task)
       context_data = subject.context_data
 
@@ -333,7 +327,7 @@ RSpec.describe RCrewAI::Task do
       dep2 = create_test_task(name: 'dep2')
       dep1.instance_variable_set(:@status, :completed)
       dep2.instance_variable_set(:@status, :completed)
-      
+
       subject.add_context_task(dep1)
       subject.add_context_task(dep2)
 
@@ -345,7 +339,7 @@ RSpec.describe RCrewAI::Task do
       dep2 = create_test_task(name: 'dep2')
       dep1.instance_variable_set(:@status, :completed)
       dep2.instance_variable_set(:@status, :running)
-      
+
       subject.add_context_task(dep1)
       subject.add_context_task(dep2)
 

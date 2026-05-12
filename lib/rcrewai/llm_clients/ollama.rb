@@ -67,13 +67,13 @@ module RCrewAI
         url = "#{@base_url}/api/tags"
         response = http_client.get(url, {}, build_headers)
         result = handle_response(response)
-        
+
         if result['models']
           result['models'].map { |model| model['name'] }
         else
           []
         end
-      rescue => e
+      rescue StandardError => e
         logger.warn "Failed to fetch Ollama models: #{e.message}"
         []
       end
@@ -81,7 +81,7 @@ module RCrewAI
       def pull_model(model_name)
         payload = { name: model_name }
         url = "#{@base_url}/api/pull"
-        
+
         response = http_client.post(url, payload, build_headers)
         handle_response(response)
       end
@@ -90,10 +90,10 @@ module RCrewAI
         model_name ||= config.model
         payload = { name: model_name }
         url = "#{@base_url}/api/show"
-        
+
         response = http_client.post(url, payload, build_headers)
         handle_response(response)
-      rescue => e
+      rescue StandardError => e
         logger.warn "Failed to get model info for #{model_name}: #{e.message}"
         nil
       end
@@ -150,8 +150,8 @@ module RCrewAI
 
       def validate_config!
         # Ollama doesn't require an API key
-        raise ConfigurationError, "Model is required" unless config.model
-        
+        raise ConfigurationError, 'Model is required' unless config.model
+
         # Test connection to Ollama server
         test_connection
       end
@@ -159,7 +159,7 @@ module RCrewAI
       def test_connection
         url = "#{@base_url}/api/tags"
         response = http_client.get(url, {}, build_headers)
-        
+
         unless (200..299).include?(response.status)
           raise ConfigurationError, "Cannot connect to Ollama server at #{@base_url}"
         end

@@ -66,7 +66,7 @@ RSpec.describe RCrewAI::Crew do
     it 'resets process instance when changed' do
       # Set up initial process instance
       subject.send(:create_process_instance)
-      original_instance = subject.instance_variable_get(:@process_instance)
+      subject.instance_variable_get(:@process_instance)
 
       subject.process = :hierarchical
       expect(subject.instance_variable_get(:@process_instance)).to be_nil
@@ -86,9 +86,9 @@ RSpec.describe RCrewAI::Crew do
         expect(subject).to receive(:execute_sync).and_call_original
         allow_any_instance_of(RCrewAI::Process::Sequential)
           .to receive(:execute).and_return([
-            { name: 'task1', status: :completed, result: 'Result 1' },
-            { name: 'task2', status: :completed, result: 'Result 2' }
-          ])
+                                             { name: 'task1', status: :completed, result: 'Result 1' },
+                                             { name: 'task2', status: :completed, result: 'Result 2' }
+                                           ])
 
         results = subject.execute
         expect(results).to be_a(Hash)
@@ -108,10 +108,10 @@ RSpec.describe RCrewAI::Crew do
     context 'asynchronous execution' do
       it 'executes crew asynchronously when requested' do
         allow(subject).to receive(:execute_sequential_async).with(any_args).and_return({
-          crew: 'test_crew',
-          process: :async_sequential,
-          results: []
-        })
+                                                                                         crew: 'test_crew',
+                                                                                         process: :async_sequential,
+                                                                                         results: []
+                                                                                       })
 
         result = subject.execute(async: true, max_concurrency: 2)
         expect(result[:crew]).to eq('test_crew')
@@ -121,7 +121,7 @@ RSpec.describe RCrewAI::Crew do
       it 'handles different process types in async mode' do
         subject.process = :hierarchical
         expect(subject).to receive(:execute_hierarchical_async).and_call_original
-        
+
         # Mock the hierarchical async execution
         allow(subject).to receive(:find_manager_agent).and_return(agent1)
         allow_any_instance_of(RCrewAI::AsyncExecutor).to receive(:execute_tasks_async)
@@ -149,8 +149,8 @@ RSpec.describe RCrewAI::Crew do
       mock_process = double('Process')
       expect(subject).to receive(:create_process_instance).and_return(mock_process)
       expect(mock_process).to receive(:execute).and_return([
-        { name: 'task1', status: :completed, result: 'Done' }
-      ])
+                                                             { name: 'task1', status: :completed, result: 'Done' }
+                                                           ])
 
       results = subject.execute_sync
       expect(results[:crew]).to eq('test_crew')
@@ -169,7 +169,7 @@ RSpec.describe RCrewAI::Crew do
       subject.process = :sequential
       subject.add_task(task1)
       subject.add_task(task2)
-      
+
       mock_executor = double('AsyncExecutor')
       expect(RCrewAI::AsyncExecutor).to receive(:new).and_return(mock_executor)
       expect(mock_executor).to receive(:execute_tasks_async)
@@ -209,7 +209,7 @@ RSpec.describe RCrewAI::Crew do
     it 'coordinates execution through manager' do
       subject.process = :hierarchical
       subject.add_task(task1)
-      
+
       mock_executor = double('AsyncExecutor')
       allow(RCrewAI::AsyncExecutor).to receive(:new).and_return(mock_executor)
       allow(mock_executor).to receive(:execute_tasks_async).and_return({ results: [] })
@@ -233,7 +233,7 @@ RSpec.describe RCrewAI::Crew do
 
     it 'executes all tasks in parallel' do
       subject.process = :consensual
-      
+
       mock_executor = double('AsyncExecutor')
       expect(RCrewAI::AsyncExecutor).to receive(:new).and_return(mock_executor)
       expect(mock_executor).to receive(:execute_tasks_async)

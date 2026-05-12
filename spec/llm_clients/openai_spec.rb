@@ -12,7 +12,7 @@ RSpec.describe RCrewAI::LLMClients::OpenAI do
            max_tokens: 1000,
            timeout: 60)
   end
-  
+
   subject { described_class.new(config) }
 
   it_behaves_like 'an LLM client'
@@ -60,7 +60,7 @@ RSpec.describe RCrewAI::LLMClients::OpenAI do
         .and_return(successful_response)
 
       result = subject.chat(messages: [{ role: 'user', content: 'Hello' }])
-      
+
       expect(result).to include(
         content: 'Hello, how can I help?',
         role: 'assistant',
@@ -104,11 +104,11 @@ RSpec.describe RCrewAI::LLMClients::OpenAI do
 
     it 'handles API errors' do
       error_response = double('Response',
-                             status: 400,
-                             body: { 'error' => { 'message' => 'Invalid request' } })
-      
+                              status: 400,
+                              body: { 'error' => { 'message' => 'Invalid request' } })
+
       allow(mock_http).to receive(:post).and_return(error_response)
-      
+
       expect { subject.chat(messages: ['Hello']) }
         .to raise_error(RCrewAI::LLMClients::APIError, /Invalid request/)
     end
@@ -204,7 +204,7 @@ RSpec.describe RCrewAI::LLMClients::OpenAI do
                               api_key: nil,
                               openai_api_key: nil,
                               model: 'gpt-4')
-      
+
       expect { described_class.new(invalid_config) }
         .to raise_error(RCrewAI::ConfigurationError, /OpenAI API key is required/)
     end
