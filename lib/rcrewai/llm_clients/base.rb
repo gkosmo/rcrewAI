@@ -17,7 +17,7 @@ module RCrewAI
       end
 
       def chat(messages:, **options)
-        raise NotImplementedError, "Subclasses must implement #chat method"
+        raise NotImplementedError, 'Subclasses must implement #chat method'
       end
 
       def complete(prompt:, **options)
@@ -27,8 +27,8 @@ module RCrewAI
       protected
 
       def validate_config!
-        raise ConfigurationError, "API key is required" unless config.api_key
-        raise ConfigurationError, "Model is required" unless config.model
+        raise ConfigurationError, 'API key is required' unless config.api_key
+        raise ConfigurationError, 'Model is required' unless config.model
       end
 
       def build_headers
@@ -54,9 +54,9 @@ module RCrewAI
         when 400
           raise APIError, "Bad request: #{response.body}"
         when 401
-          raise AuthenticationError, "Invalid API key"
+          raise AuthenticationError, 'Invalid API key'
         when 429
-          raise RateLimitError, "Rate limit exceeded"
+          raise RateLimitError, 'Rate limit exceeded'
         when 500..599
           raise APIError, "Server error: #{response.status}"
         else

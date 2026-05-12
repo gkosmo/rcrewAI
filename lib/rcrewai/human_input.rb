@@ -22,77 +22,77 @@ module RCrewAI
 
     def request_approval(message, **options)
       interaction = create_interaction(:approval, message, options)
-      
+
       return handle_auto_approval(interaction) if @auto_approve
-      
+
       display_approval_request(interaction)
       response = get_user_input(interaction)
-      
+
       result = process_approval_response(response, interaction)
       record_interaction(interaction, response, result)
-      
+
       result
     end
 
     def request_input(prompt, **options)
       interaction = create_interaction(:input, prompt, options)
-      
+
       display_input_request(interaction)
       response = get_user_input(interaction)
-      
+
       result = process_input_response(response, interaction)
       record_interaction(interaction, response, result)
-      
+
       result
     end
 
     def request_choice(prompt, choices, **options)
       interaction = create_interaction(:choice, prompt, options.merge(choices: choices))
-      
+
       display_choice_request(interaction)
       response = get_user_input(interaction)
-      
+
       result = process_choice_response(response, interaction)
       record_interaction(interaction, response, result)
-      
+
       result
     end
 
     def request_review(content, **options)
       interaction = create_interaction(:review, content, options)
-      
+
       display_review_request(interaction)
       response = get_user_input(interaction)
-      
+
       result = process_review_response(response, interaction)
       record_interaction(interaction, response, result)
-      
+
       result
     end
 
     def confirm_action(action_description, **options)
       interaction = create_interaction(:confirmation, action_description, options)
-      
+
       return handle_auto_approval(interaction) if @auto_approve
-      
+
       display_confirmation_request(interaction)
       response = get_user_input(interaction)
-      
+
       result = process_confirmation_response(response, interaction)
       record_interaction(interaction, response, result)
-      
+
       result
     end
 
     def get_feedback(prompt, **options)
       interaction = create_interaction(:feedback, prompt, options)
-      
+
       display_feedback_request(interaction)
       response = get_user_input(interaction)
-      
+
       result = { feedback: response, timestamp: Time.now }
       record_interaction(interaction, response, result)
-      
+
       result
     end
 
@@ -131,122 +131,110 @@ module RCrewAI
     end
 
     def display_approval_request(interaction)
-      puts "\n" + "="*60
-      puts "🤝 HUMAN APPROVAL REQUIRED"
-      puts "="*60
+      puts "\n#{'=' * 60}"
+      puts '🤝 HUMAN APPROVAL REQUIRED'
+      puts '=' * 60
       puts "Request: #{interaction[:content]}"
-      
-      if interaction[:options][:context]
-        puts "\nContext: #{interaction[:options][:context]}"
-      end
-      
-      if interaction[:options][:consequences]
-        puts "\nConsequences: #{interaction[:options][:consequences]}"
-      end
-      
+
+      puts "\nContext: #{interaction[:options][:context]}" if interaction[:options][:context]
+
+      puts "\nConsequences: #{interaction[:options][:consequences]}" if interaction[:options][:consequences]
+
       puts "\nDo you approve this action? (yes/no)"
-      print "> "
+      print '> '
     end
 
     def display_input_request(interaction)
-      puts "\n" + "="*60
-      puts "💬 HUMAN INPUT REQUESTED"
-      puts "="*60
+      puts "\n#{'=' * 60}"
+      puts '💬 HUMAN INPUT REQUESTED'
+      puts '=' * 60
       puts "Prompt: #{interaction[:content]}"
-      
-      if interaction[:options][:help_text]
-        puts "\nHelp: #{interaction[:options][:help_text]}"
-      end
-      
-      if interaction[:options][:examples]
-        puts "\nExamples: #{interaction[:options][:examples].join(', ')}"
-      end
-      
+
+      puts "\nHelp: #{interaction[:options][:help_text]}" if interaction[:options][:help_text]
+
+      puts "\nExamples: #{interaction[:options][:examples].join(', ')}" if interaction[:options][:examples]
+
       puts "\nPlease provide your input:"
-      print "> "
+      print '> '
     end
 
     def display_choice_request(interaction)
-      puts "\n" + "="*60
-      puts "🎯 HUMAN CHOICE REQUIRED"
-      puts "="*60
+      puts "\n#{'=' * 60}"
+      puts '🎯 HUMAN CHOICE REQUIRED'
+      puts '=' * 60
       puts "Question: #{interaction[:content]}"
       puts "\nAvailable choices:"
-      
+
       interaction[:options][:choices].each_with_index do |choice, index|
         puts "  #{index + 1}. #{choice}"
       end
-      
+
       puts "\nPlease select a choice (enter number or text):"
-      print "> "
+      print '> '
     end
 
     def display_review_request(interaction)
-      puts "\n" + "="*60
-      puts "👀 HUMAN REVIEW REQUESTED"
-      puts "="*60
-      puts "Content to review:"
-      puts "-" * 40
+      puts "\n#{'=' * 60}"
+      puts '👀 HUMAN REVIEW REQUESTED'
+      puts '=' * 60
+      puts 'Content to review:'
+      puts '-' * 40
       puts interaction[:content]
-      puts "-" * 40
-      
+      puts '-' * 40
+
       if interaction[:options][:review_criteria]
         puts "\nReview criteria: #{interaction[:options][:review_criteria].join(', ')}"
       end
-      
+
       puts "\nPlease review and provide feedback (or type 'approve' to approve as-is):"
-      print "> "
+      print '> '
     end
 
     def display_confirmation_request(interaction)
-      puts "\n" + "="*60
-      puts "⚠️  CONFIRMATION REQUIRED"
-      puts "="*60
+      puts "\n#{'=' * 60}"
+      puts '⚠️  CONFIRMATION REQUIRED'
+      puts '=' * 60
       puts "Action: #{interaction[:content]}"
-      
-      if interaction[:options][:risk_level]
-        puts "Risk Level: #{interaction[:options][:risk_level]}"
-      end
-      
-      if interaction[:options][:details]
-        puts "Details: #{interaction[:options][:details]}"
-      end
-      
+
+      puts "Risk Level: #{interaction[:options][:risk_level]}" if interaction[:options][:risk_level]
+
+      puts "Details: #{interaction[:options][:details]}" if interaction[:options][:details]
+
       puts "\nConfirm this action? (yes/no)"
-      print "> "
+      print '> '
     end
 
     def display_feedback_request(interaction)
-      puts "\n" + "="*60
-      puts "📝 FEEDBACK REQUESTED"
-      puts "="*60
+      puts "\n#{'=' * 60}"
+      puts '📝 FEEDBACK REQUESTED'
+      puts '=' * 60
       puts "Request: #{interaction[:content]}"
-      
+
       puts "\nPlease provide your feedback:"
-      print "> "
+      print '> '
     end
 
     def get_user_input(interaction)
       start_time = Time.now
-      
+
       begin
-        if STDIN.tty?
+        if $stdin.tty?
           # Interactive terminal input with timeout
           response = nil
           input_thread = Thread.new do
-            response = STDIN.gets&.chomp
+            response = $stdin.gets&.chomp
           end
-          
+
           unless input_thread.join(interaction[:timeout])
             input_thread.kill
             puts "\n⏰ Input timed out after #{interaction[:timeout]} seconds"
             return nil
           end
-          
+
           response
         else
           # Non-interactive mode (e.g., scripts, tests)
-          puts "⚠️ Non-interactive mode detected, using default response"
+          puts '⚠️ Non-interactive mode detected, using default response'
           get_default_response(interaction[:type])
         end
       rescue Interrupt
@@ -270,20 +258,20 @@ module RCrewAI
       end
     end
 
-    def process_approval_response(response, interaction)
+    def process_approval_response(response, _interaction)
       return { approved: false, reason: 'No response provided' } if response.nil?
-      
+
       response_clean = response.strip.downcase
-      
+
       approved = if @approval_keywords.any? { |keyword| response_clean.include?(keyword) }
                    true
                  elsif @rejection_keywords.any? { |keyword| response_clean.include?(keyword) }
                    false
                  else
                    # Try to interpret ambiguous responses
-                   response_clean.length > 0 && !response_clean.start_with?('n')
+                   response_clean.length.positive? && !response_clean.start_with?('n')
                  end
-      
+
       {
         approved: approved,
         response: response,
@@ -294,10 +282,10 @@ module RCrewAI
 
     def process_input_response(response, interaction)
       return { input: nil, valid: false, reason: 'No response provided' } if response.nil?
-      
+
       # Validate input if validation rules provided
       validation_result = validate_input(response, interaction[:options][:validation] || {})
-      
+
       {
         input: response,
         valid: validation_result[:valid],
@@ -309,10 +297,10 @@ module RCrewAI
 
     def process_choice_response(response, interaction)
       return { choice: nil, valid: false, reason: 'No response provided' } if response.nil?
-      
+
       choices = interaction[:options][:choices]
       response_clean = response.strip
-      
+
       # Try to match by number
       if response_clean.match?(/^\d+$/)
         choice_index = response_clean.to_i - 1
@@ -327,7 +315,7 @@ module RCrewAI
           }
         end
       end
-      
+
       # Try to match by text
       selected_choice = choices.find { |choice| choice.downcase.include?(response_clean.downcase) }
       if selected_choice
@@ -339,7 +327,7 @@ module RCrewAI
           timestamp: Time.now
         }
       end
-      
+
       # Invalid selection
       {
         choice: nil,
@@ -350,11 +338,11 @@ module RCrewAI
       }
     end
 
-    def process_review_response(response, interaction)
+    def process_review_response(response, _interaction)
       return { feedback: nil, approved: false, reason: 'No response provided' } if response.nil?
-      
+
       response_clean = response.strip.downcase
-      
+
       # Check if it's a simple approval
       if @approval_keywords.any? { |keyword| response_clean == keyword }
         return {
@@ -364,7 +352,7 @@ module RCrewAI
           timestamp: Time.now
         }
       end
-      
+
       # Otherwise treat as feedback
       {
         feedback: response,
@@ -381,36 +369,38 @@ module RCrewAI
 
     def validate_input(input, validation_rules)
       return { valid: true, reason: 'No validation rules' } if validation_rules.empty?
-      
+
       # Check minimum length
       if validation_rules[:min_length] && input.length < validation_rules[:min_length]
         return { valid: false, reason: "Input too short (minimum #{validation_rules[:min_length]} characters)" }
       end
-      
+
       # Check maximum length
       if validation_rules[:max_length] && input.length > validation_rules[:max_length]
         return { valid: false, reason: "Input too long (maximum #{validation_rules[:max_length]} characters)" }
       end
-      
+
       # Check pattern matching
       if validation_rules[:pattern] && !input.match?(validation_rules[:pattern])
         return { valid: false, reason: "Input doesn't match required pattern" }
       end
-      
+
       # Check required keywords
       if validation_rules[:required_keywords]
-        missing_keywords = validation_rules[:required_keywords].reject { |keyword| input.downcase.include?(keyword.downcase) }
+        missing_keywords = validation_rules[:required_keywords].reject do |keyword|
+          input.downcase.include?(keyword.downcase)
+        end
         unless missing_keywords.empty?
           return { valid: false, reason: "Missing required keywords: #{missing_keywords.join(', ')}" }
         end
       end
-      
+
       { valid: true, reason: 'Input passes validation' }
     end
 
     def process_input_value(input, options)
       return input unless options[:type]
-      
+
       case options[:type]
       when :integer
         input.to_i
@@ -431,19 +421,19 @@ module RCrewAI
 
     def extract_suggestions(feedback)
       suggestions = []
-      
+
       # Simple pattern matching for common suggestion indicators
       suggestion_patterns = [
         /(?:should|could|might want to|consider|suggest|recommend)\s+(.+?)(?:\.|$)/i,
         /(?:change|modify|update|fix|improve)\s+(.+?)(?:\.|$)/i,
         /(?:add|include|remove|delete)\s+(.+?)(?:\.|$)/i
       ]
-      
+
       suggestion_patterns.each do |pattern|
         matches = feedback.scan(pattern)
         suggestions.concat(matches.flatten)
       end
-      
+
       suggestions.map(&:strip).reject(&:empty?).uniq
     end
 
@@ -462,20 +452,20 @@ module RCrewAI
       interaction[:result] = result
       interaction[:completed_at] = Time.now
       interaction[:duration] = interaction[:completed_at] - interaction[:timestamp]
-      
+
       @interactions << interaction
       @input_history << {
         type: interaction[:type],
         response: response,
         timestamp: Time.now
       }
-      
+
       @logger.info "Human interaction completed: #{interaction[:type]} - #{result[:reason] || 'Success'}"
     end
 
     def calculate_session_duration
       return 0 if @interactions.empty?
-      
+
       first = @interactions.first[:timestamp]
       last = @interactions.last[:completed_at] || @interactions.last[:timestamp]
       last - first

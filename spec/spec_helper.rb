@@ -26,7 +26,7 @@ VCR.configure do |config|
   config.cassette_library_dir = 'spec/vcr_cassettes'
   config.hook_into :webmock
   config.configure_rspec_metadata!
-  
+
   # Filter sensitive data
   config.filter_sensitive_data('<OPENAI_API_KEY>') { ENV['OPENAI_API_KEY'] }
   config.filter_sensitive_data('<ANTHROPIC_API_KEY>') { ENV['ANTHROPIC_API_KEY'] }
@@ -50,7 +50,7 @@ RSpec.configure do |config|
   config.disable_monkey_patching!
   config.warnings = false
   config.profile_examples = 10
-  
+
   # Random order
   config.order = :random
   Kernel.srand config.seed
@@ -61,7 +61,7 @@ RSpec.configure do |config|
   end
 
   # Helper methods
-  config.include Module.new {
+  config.include(Module.new do
     def mock_llm_response(content: 'Mock response', provider: :openai)
       {
         content: content,
@@ -121,7 +121,7 @@ RSpec.configure do |config|
       $stdout = original_stdout
       $stderr = original_stderr
     end
-  }
+  end)
 end
 
 # Shared examples for LLM clients
@@ -129,28 +129,27 @@ RSpec.shared_examples 'an LLM client' do
   describe '#chat' do
     it 'accepts messages and returns formatted response' do
       expect(subject).to respond_to(:chat)
-      
+
       # Create provider-specific mock response
-      if subject.class.name.include?('OpenAI')
-        mock_response = double('Response',
-          status: 200,
-          body: {
-            'choices' => [{ 'message' => { 'content' => 'Test response', 'role' => 'assistant' } }],
-            'usage' => { 'prompt_tokens' => 10, 'completion_tokens' => 20 }
-          }
-        )
-      else
-        mock_response = double('Response',
-          status: 200,
-          body: {
-            'content' => [{ 'text' => 'Test response' }],
-            'usage' => { 'input_tokens' => 10, 'output_tokens' => 20 }
-          }
-        )
-      end
-      
+      mock_response = if subject.class.name.include?('OpenAI')
+                        double('Response',
+                               status: 200,
+                               body: {
+                                 'choices' => [{ 'message' => { 'content' => 'Test response',
+                                                                'role' => 'assistant' } }],
+                                 'usage' => { 'prompt_tokens' => 10, 'completion_tokens' => 20 }
+                               })
+                      else
+                        double('Response',
+                               status: 200,
+                               body: {
+                                 'content' => [{ 'text' => 'Test response' }],
+                                 'usage' => { 'input_tokens' => 10, 'output_tokens' => 20 }
+                               })
+                      end
+
       allow(subject).to receive_message_chain(:http_client, :post).and_return(mock_response)
-      
+
       result = subject.chat(messages: [{ role: 'user', content: 'test' }])
       expect(result).to have_key(:content)
     end
@@ -159,28 +158,27 @@ RSpec.shared_examples 'an LLM client' do
   describe '#complete' do
     it 'accepts prompt and returns formatted response' do
       expect(subject).to respond_to(:complete)
-      
+
       # Create provider-specific mock response
-      if subject.class.name.include?('OpenAI')
-        mock_response = double('Response',
-          status: 200,
-          body: {
-            'choices' => [{ 'message' => { 'content' => 'Test response', 'role' => 'assistant' } }],
-            'usage' => { 'prompt_tokens' => 10, 'completion_tokens' => 20 }
-          }
-        )
-      else
-        mock_response = double('Response',
-          status: 200,
-          body: {
-            'content' => [{ 'text' => 'Test response' }],
-            'usage' => { 'input_tokens' => 10, 'output_tokens' => 20 }
-          }
-        )
-      end
-      
+      mock_response = if subject.class.name.include?('OpenAI')
+                        double('Response',
+                               status: 200,
+                               body: {
+                                 'choices' => [{ 'message' => { 'content' => 'Test response',
+                                                                'role' => 'assistant' } }],
+                                 'usage' => { 'prompt_tokens' => 10, 'completion_tokens' => 20 }
+                               })
+                      else
+                        double('Response',
+                               status: 200,
+                               body: {
+                                 'content' => [{ 'text' => 'Test response' }],
+                                 'usage' => { 'input_tokens' => 10, 'output_tokens' => 20 }
+                               })
+                      end
+
       allow(subject).to receive_message_chain(:http_client, :post).and_return(mock_response)
-      
+
       result = subject.complete(prompt: 'test')
       expect(result).to have_key(:content)
     end
@@ -203,4 +201,4 @@ RSpec.shared_examples 'a tool' do
   end
 end
 
-puts "RSpec configuration loaded successfully"
+puts 'RSpec configuration loaded successfully'

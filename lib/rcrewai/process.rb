@@ -12,7 +12,7 @@ module RCrewAI
       end
 
       def execute
-        raise NotImplementedError, "Subclasses must implement #execute method"
+        raise NotImplementedError, 'Subclasses must implement #execute method'
       end
 
       protected
@@ -38,7 +38,7 @@ module RCrewAI
           begin
             result = task.execute
             results << { task: task, result: result, status: :completed }
-          rescue => e
+          rescue StandardError => e
             @logger.error "Task #{task.name} failed: #{e.message}"
             results << { task: task, result: e.message, status: :failed }
           end
@@ -75,14 +75,14 @@ module RCrewAI
 
       def find_or_create_manager
         # Look for an agent marked as manager
-        manager = crew.agents.find { |agent| agent.is_manager? }
-        
+        manager = crew.agents.find(&:is_manager?)
+
         # If no explicit manager, find agent with delegation capabilities
-        manager ||= crew.agents.find { |agent| agent.allow_delegation }
-        
+        manager ||= crew.agents.find(&:allow_delegation)
+
         # Create a default manager if none found
         if manager.nil?
-          @logger.warn "No manager agent found, creating default manager"
+          @logger.warn 'No manager agent found, creating default manager'
           manager = create_default_manager
           crew.add_agent(manager)
         end
@@ -92,10 +92,10 @@ module RCrewAI
 
       def create_default_manager
         RCrewAI::Agent.new(
-          name: "crew_manager",
-          role: "Crew Manager",
-          goal: "Coordinate team efforts and delegate tasks effectively",
-          backstory: "You are an experienced project manager who coordinates team efforts, delegates tasks appropriately, and ensures deliverables meet requirements.",
+          name: 'crew_manager',
+          role: 'Crew Manager',
+          goal: 'Coordinate team efforts and delegate tasks effectively',
+          backstory: 'You are an experienced project manager who coordinates team efforts, delegates tasks appropriately, and ensures deliverables meet requirements.',
           allow_delegation: true,
           manager: true,
           verbose: crew.verbose
@@ -127,7 +127,7 @@ module RCrewAI
       def find_best_agent_for_task(task, available_agents)
         # Simple heuristic: match task keywords with agent role/goal
         task_keywords = extract_keywords(task.description.downcase)
-        
+
         best_agent = available_agents.max_by do |agent|
           agent_keywords = extract_keywords("#{agent.role} #{agent.goal}".downcase)
           common_keywords = (task_keywords & agent_keywords).length
@@ -140,14 +140,15 @@ module RCrewAI
       end
 
       def extract_keywords(text)
-        stopwords = %w[the a an and or but in on at to for of with by is are was were be been being have has had do does did will would could should]
+        stopwords = %w[the a an and or but in on at to for of with by is are was were be been being have has had do
+                       does did will would could should]
         text.split(/\W+/).reject { |w| w.length < 3 || stopwords.include?(w) }
       end
 
       def validate_hierarchy!
-        raise ProcessError, "No manager agent available" unless manager_agent
-        raise ProcessError, "No subordinate agents available" if hierarchy[:subordinates].empty?
-        raise ProcessError, "No tasks to execute" if crew.tasks.empty?
+        raise ProcessError, 'No manager agent available' unless manager_agent
+        raise ProcessError, 'No subordinate agents available' if hierarchy[:subordinates].empty?
+        raise ProcessError, 'No tasks to execute' if crew.tasks.empty?
       end
 
       def create_execution_plan
@@ -191,7 +192,7 @@ module RCrewAI
 
           if ready_tasks.empty?
             # Circular dependency or other issue
-            @logger.warn "Circular dependency detected, executing remaining tasks in order"
+            @logger.warn 'Circular dependency detected, executing remaining tasks in order'
             phases << remaining_tasks
             break
           end
@@ -206,24 +207,24 @@ module RCrewAI
 
       def execute_with_manager(plan)
         results = []
-        
+
         plan[:phases].each_with_index do |phase_tasks, phase_index|
           @logger.info "Executing phase #{phase_index + 1}: #{phase_tasks.length} tasks"
-          
+
           # Manager delegates tasks in this phase
           phase_results = execute_phase(phase_tasks, phase_index + 1)
           results.concat(phase_results)
-          
+
           # Check if we should continue to next phase
-          if phase_results.any? { |r| r[:status] == :failed }
-            failed_tasks = phase_results.select { |r| r[:status] == :failed }
-            @logger.warn "Phase #{phase_index + 1} had #{failed_tasks.length} failures"
-            
-            # Manager decides whether to continue
-            if should_abort_execution?(failed_tasks, phase_index + 1, plan)
-              @logger.error "Manager decided to abort execution due to critical failures"
-              break
-            end
+          next unless phase_results.any? { |r| r[:status] == :failed }
+
+          failed_tasks = phase_results.select { |r| r[:status] == :failed }
+          @logger.warn "Phase #{phase_index + 1} had #{failed_tasks.length} failures"
+
+          # Manager decides whether to continue
+          if should_abort_execution?(failed_tasks, phase_index + 1, plan)
+            @logger.error 'Manager decided to abort execution due to critical failures'
+            break
           end
         end
 
@@ -232,39 +233,38 @@ module RCrewAI
 
       def execute_phase(tasks, phase_number)
         phase_results = []
-        
+
         # Manager creates delegation plan for this phase
         delegation_plan = create_delegation_plan(tasks, phase_number)
-        
+
         # Execute delegated tasks
         tasks.each do |task|
           assigned_agent = hierarchy[:task_assignments][task]
-          
+
           @logger.info "Manager delegating '#{task.name}' to #{assigned_agent.name}"
-          
+
           begin
             # Manager provides delegation context
             delegation_context = create_delegation_context(task, assigned_agent, delegation_plan)
-            
+
             # Execute task with delegation
             result = execute_delegated_task(task, assigned_agent, delegation_context)
-            
-            phase_results << { 
-              task: task, 
-              result: result, 
+
+            phase_results << {
+              task: task,
+              result: result,
               status: :completed,
               assigned_agent: assigned_agent,
               phase: phase_number
             }
-            
+
             @logger.info "Task '#{task.name}' completed successfully"
-            
-          rescue => e
+          rescue StandardError => e
             @logger.error "Delegated task '#{task.name}' failed: #{e.message}"
-            
-            phase_results << { 
-              task: task, 
-              result: e.message, 
+
+            phase_results << {
+              task: task,
+              result: e.message,
               status: :failed,
               assigned_agent: assigned_agent,
               phase: phase_number,
@@ -272,7 +272,7 @@ module RCrewAI
             }
           end
         end
-        
+
         phase_results
       end
 
@@ -288,42 +288,34 @@ module RCrewAI
       def assign_task_priorities(tasks)
         # Simple priority assignment based on dependencies and complexity
         priorities = {}
-        
+
         tasks.each do |task|
           priority = :normal
-          
+
           # High priority if other tasks depend on this one
-          if crew.tasks.any? { |t| t.context&.include?(task) }
-            priority = :high
-          end
-          
+          priority = :high if crew.tasks.any? { |t| t.context&.include?(task) }
+
           # Low priority if task is optional or has many dependencies
-          if task.context&.length.to_i > 2
-            priority = :low
-          end
-          
+          priority = :low if task.context&.length.to_i > 2
+
           priorities[task] = priority
         end
-        
+
         priorities
       end
 
       def generate_coordination_notes(tasks)
         notes = []
-        
-        if tasks.length > 1
-          notes << "Multiple tasks in this phase - coordinate timing if needed"
-        end
-        
+
+        notes << 'Multiple tasks in this phase - coordinate timing if needed' if tasks.length > 1
+
         if tasks.any? { |t| t.context&.any? }
-          notes << "Some tasks depend on previous results - ensure context is available"
+          notes << 'Some tasks depend on previous results - ensure context is available'
         end
-        
-        if tasks.any? { |t| t.tools&.any? }
-          notes << "Tasks require external tools - monitor for failures"
-        end
-        
-        notes.join(". ") + "."
+
+        notes << 'Tasks require external tools - monitor for failures' if tasks.any? { |t| t.tools&.any? }
+
+        "#{notes.join('. ')}."
       end
 
       def create_delegation_context(task, assigned_agent, delegation_plan)
@@ -332,51 +324,51 @@ module RCrewAI
           assignment_reason: generate_assignment_reason(task, assigned_agent),
           phase_context: delegation_plan,
           expectations: generate_task_expectations(task),
-          escalation_notes: "Contact manager if issues arise or guidance needed"
+          escalation_notes: 'Contact manager if issues arise or guidance needed'
         }
       end
 
-      def generate_assignment_reason(task, agent)
+      def generate_assignment_reason(_task, agent)
         "Assigned to #{agent.name} based on role '#{agent.role}' and expertise alignment with task requirements"
       end
 
       def generate_task_expectations(task)
         expectations = []
         expectations << "Expected output: #{task.expected_output}" if task.expected_output
-        expectations << "Quality: Professional and thorough"
-        expectations << "Communication: Report progress and any blockers"
-        expectations.join(". ") + "."
+        expectations << 'Quality: Professional and thorough'
+        expectations << 'Communication: Report progress and any blockers'
+        "#{expectations.join('. ')}."
       end
 
       def execute_delegated_task(task, agent, delegation_context)
         # Enhance task with delegation context
         enhanced_task = task.dup
         enhanced_task.instance_variable_set(:@delegation_context, delegation_context)
-        
+
         # Define method to access delegation context
         def enhanced_task.delegation_context
           @delegation_context
         end
-        
+
         # Execute the task
         agent.execute_task(enhanced_task)
       end
 
-      def should_abort_execution?(failed_tasks, phase_number, plan)
+      def should_abort_execution?(failed_tasks, phase_number, _plan)
         # Abort if more than 50% of critical tasks failed
         critical_failures = failed_tasks.count { |r| r[:task].context&.any? || r[:task].expected_output }
-        
+
         if critical_failures > (failed_tasks.length * 0.5)
           @logger.error "Too many critical task failures (#{critical_failures}/#{failed_tasks.length})"
           return true
         end
-        
+
         # Abort if we're early in execution and having major issues
         if phase_number <= 2 && failed_tasks.length > 1
-          @logger.error "Multiple failures in early phases indicate systemic issues"
+          @logger.error 'Multiple failures in early phases indicate systemic issues'
           return true
         end
-        
+
         false
       end
     end
@@ -384,35 +376,34 @@ module RCrewAI
     class Consensual < Base
       def execute
         log_execution_start
-        @logger.info "Consensual execution - agents collaborate on decisions"
-        
+        @logger.info 'Consensual execution - agents collaborate on decisions'
+
         # For now, implement as enhanced sequential with collaboration
         # Full consensual process would involve agent voting/discussion
         results = []
-        
+
         crew.tasks.each do |task|
           @logger.info "Collaborative execution of task: #{task.name}"
-          
+
           # Simple consensus: let multiple agents provide input
           consensus_result = execute_with_consensus(task)
           results << consensus_result
         end
-        
+
         log_execution_end(results)
         results
       end
-      
+
       private
-      
+
       def execute_with_consensus(task)
         # For now, just execute normally
         # Future: implement actual consensus mechanisms
-        begin
-          result = task.execute
-          { task: task, result: result, status: :completed }
-        rescue => e
-          { task: task, result: e.message, status: :failed }
-        end
+
+        result = task.execute
+        { task: task, result: result, status: :completed }
+      rescue StandardError => e
+        { task: task, result: e.message, status: :failed }
       end
     end
 

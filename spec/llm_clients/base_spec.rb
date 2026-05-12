@@ -4,8 +4,8 @@ require 'spec_helper'
 
 RSpec.describe RCrewAI::LLMClients::Base do
   let(:config) do
-    double('Configuration', 
-           api_key: 'test-key', 
+    double('Configuration',
+           api_key: 'test-key',
            model: 'test-model',
            temperature: 0.1,
            timeout: 60)

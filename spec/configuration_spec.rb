@@ -26,7 +26,7 @@ RSpec.describe RCrewAI::Configuration do
       allow(ENV).to receive(:[]).with('LLM_BASE_URL').and_return(nil)
       allow(ENV).to receive(:[]).with('AZURE_API_VERSION').and_return(nil)
       allow(ENV).to receive(:[]).with('AZURE_DEPLOYMENT_NAME').and_return(nil)
-      
+
       config = described_class.new
       expect(config.openai_api_key).to eq('test-openai-key')
       expect(config.anthropic_api_key).to eq('test-anthropic-key')
@@ -38,9 +38,9 @@ RSpec.describe RCrewAI::Configuration do
       config.llm_provider = :openai
       config.openai_api_key = 'openai-key'
       config.anthropic_api_key = 'anthropic-key'
-      
+
       expect(config.api_key).to eq('openai-key')
-      
+
       config.llm_provider = :anthropic
       expect(config.api_key).to eq('anthropic-key')
     end
@@ -48,7 +48,7 @@ RSpec.describe RCrewAI::Configuration do
     it 'falls back to generic api_key' do
       config.llm_provider = :openai
       config.instance_variable_set(:@api_key, 'generic-key')
-      
+
       expect(config.api_key).to eq('generic-key')
     end
   end
@@ -58,9 +58,9 @@ RSpec.describe RCrewAI::Configuration do
       config.llm_provider = :openai
       config.openai_model = 'gpt-4'
       config.anthropic_model = 'claude-3-sonnet'
-      
+
       expect(config.model).to eq('gpt-4')
-      
+
       config.llm_provider = :anthropic
       expect(config.model).to eq('claude-3-sonnet')
     end
@@ -69,7 +69,7 @@ RSpec.describe RCrewAI::Configuration do
       config.llm_provider = :openai
       config.instance_variable_set(:@model, 'generic-model')
       config.instance_variable_set(:@openai_model, nil)
-      
+
       expect(config.model).to eq('generic-model')
     end
   end
@@ -78,10 +78,10 @@ RSpec.describe RCrewAI::Configuration do
     it 'validates required fields' do
       config.llm_provider = nil
       expect { config.validate! }.to raise_error(RCrewAI::ConfigurationError, /LLM provider must be set/)
-      
+
       config.llm_provider = :openai
       expect { config.validate! }.to raise_error(RCrewAI::ConfigurationError, /API key must be set/)
-      
+
       config.openai_api_key = 'test-key'
       config.instance_variable_set(:@model, nil)
       config.instance_variable_set(:@openai_model, nil)
@@ -92,14 +92,14 @@ RSpec.describe RCrewAI::Configuration do
       config.llm_provider = :openai
       config.openai_api_key = 'test-key'
       config.openai_model = 'gpt-4'
-      
+
       expect { config.validate! }.not_to raise_error
     end
   end
 
   describe '#supported_providers' do
     it 'returns all supported providers' do
-      expect(config.supported_providers).to eq([:openai, :anthropic, :google, :azure, :ollama])
+      expect(config.supported_providers).to eq(%i[openai anthropic google azure ollama])
     end
   end
 
@@ -122,11 +122,11 @@ RSpec.describe RCrewAI do
     end
 
     it 'validates configuration after block' do
-      expect {
+      expect do
         RCrewAI.configure do |config|
           config.llm_provider = nil
         end
-      }.to raise_error(RCrewAI::ConfigurationError)
+      end.to raise_error(RCrewAI::ConfigurationError)
     end
 
     it 'sets configuration values' do

@@ -19,13 +19,13 @@ module RCrewAI
       @tools = options[:tools] || []      # Additional tools for this specific task
       @async = options[:async] || false   # Whether task can run asynchronously
       @callback = options[:callback]      # Callback function after completion
-      
+
       # Human interaction options
       @human_input_enabled = options[:human_input] || false
       @require_human_confirmation = options[:require_confirmation] || false
       @allow_human_guidance = options[:allow_guidance] || false
       @human_review_points = options[:human_review_points] || []
-      
+
       @result = nil
       @status = :pending
       @start_time = nil
@@ -53,7 +53,7 @@ module RCrewAI
         if agent
           validate_dependencies!
           provide_context_to_agent
-          
+
           # Enable human input for agent if task allows it
           if @human_input_enabled && agent.respond_to?(:enable_human_input)
             agent.enable_human_input(
@@ -61,31 +61,28 @@ module RCrewAI
               require_approval_for_final_answer: @allow_human_guidance
             )
           end
-          
+
           @result = agent.execute_task(self)
-          
+
           # Post-execution human review if configured
           if @human_input_enabled && @human_review_points.include?(:completion)
             review_result = request_task_completion_review
-            if review_result && !review_result[:approved]
-              @result = handle_completion_review_feedback(review_result)
-            end
+            @result = handle_completion_review_feedback(review_result) if review_result && !review_result[:approved]
           end
-          
+
           @status = :completed
         else
-          @result = "Task requires an agent"
+          @result = 'Task requires an agent'
           @status = :failed
         end
 
         @end_time = Time.now
         @execution_time = @end_time - @start_time
-        
+
         # Execute callback if provided
         @callback&.call(self, @result)
-        
-        @result
 
+        @result
       rescue TaskDependencyError => e
         # Don't retry dependency errors - they need dependencies to be completed first
         @status = :failed
@@ -93,16 +90,16 @@ module RCrewAI
         @execution_time = @end_time - @start_time if @start_time
         @result = "Task dependencies not met: #{e.message}"
         raise e
-      rescue => e
+      rescue StandardError => e
         @status = :failed
         @end_time = Time.now
         @execution_time = @end_time - @start_time if @start_time
-        
+
         # Retry logic with human intervention
         if @retry_count < @max_retries
           @retry_count += 1
           puts "Task #{name} failed, retrying (#{@retry_count}/#{@max_retries})"
-          
+
           # Ask human for retry guidance if enabled
           if @human_input_enabled
             retry_decision = request_retry_guidance(e)
@@ -113,15 +110,13 @@ module RCrewAI
             when 'modify'
               # Allow human to modify task parameters
               modification_result = request_task_modification
-              if modification_result[:modified]
-                apply_task_modifications(modification_result[:changes])
-              end
-            # 'retry' is the default - continue with retry logic
+              apply_task_modifications(modification_result[:changes]) if modification_result[:modified]
+              # 'retry' is the default - continue with retry logic
             end
           end
-          
+
           @status = :pending
-          sleep(2 ** @retry_count) # Exponential backoff
+          sleep(2**@retry_count) # Exponential backoff
           return execute
         end
 
@@ -129,14 +124,12 @@ module RCrewAI
         raise TaskExecutionError, "Task '#{name}' failed: #{e.message}"
       ensure
         # Disable human input for agent after task completion
-        if @human_input_enabled && agent.respond_to?(:disable_human_input)
-          agent.disable_human_input
-        end
+        agent.disable_human_input if @human_input_enabled && agent.respond_to?(:disable_human_input)
       end
     end
 
     def context_data
-      return "" if context.empty?
+      return '' if context.empty?
 
       context_results = context.map do |task|
         if task.completed?
@@ -200,13 +193,12 @@ module RCrewAI
     def confirm_task_execution
       message = "Confirm execution of task: #{name}"
       context = "Description: #{description}\nExpected Output: #{expected_output || 'Not specified'}\nAssigned Agent: #{agent&.name || 'No agent'}"
-      consequences = "The task will be executed with the specified agent and may use external tools."
-      
+      consequences = 'The task will be executed with the specified agent and may use external tools.'
+
       request_human_approval(message,
-        context: context,
-        consequences: consequences,
-        timeout: 60
-      )
+                             context: context,
+                             consequences: consequences,
+                             timeout: 60)
     end
 
     def request_task_completion_review
@@ -214,30 +206,30 @@ module RCrewAI
         Task: #{name}
         Description: #{description}
         Expected Output: #{expected_output || 'Not specified'}
-        
+
         Actual Result:
         #{result}
-        
+
         Execution Time: #{execution_time&.round(2)} seconds
         Agent: #{agent&.name || 'Unknown'}
       CONTENT
 
       request_human_review(
         review_content,
-        review_criteria: ["Accuracy", "Completeness", "Meets expectations"],
+        review_criteria: ['Accuracy', 'Completeness', 'Meets expectations'],
         timeout: 120
       )
     end
 
     def handle_completion_review_feedback(review_result)
-      if review_result[:suggested_changes] && review_result[:suggested_changes].any?
+      if review_result[:suggested_changes]&.any?
         # Ask human how to handle the feedback
         choice_result = request_human_choice(
-          "Task completed but received feedback. How should I proceed?",
+          'Task completed but received feedback. How should I proceed?',
           [
-            "Accept result as-is despite feedback",
-            "Request agent revision based on feedback", 
-            "Let me provide the correct result"
+            'Accept result as-is despite feedback',
+            'Request agent revision based on feedback',
+            'Let me provide the correct result'
           ],
           timeout: 60
         )
@@ -247,13 +239,13 @@ module RCrewAI
           result # Return original result
         when 1
           # Request agent to revise (simplified)
-          revised_result = "#{result}\n\nNote: Human feedback received: #{review_result[:feedback]}"
-          revised_result
+          "#{result}\n\nNote: Human feedback received: #{review_result[:feedback]}"
+
         when 2
           # Get corrected result from human
           correction_result = request_human_input(
-            "Please provide the corrected task result:",
-            help_text: "Enter the complete, corrected result for this task"
+            'Please provide the corrected task result:',
+            help_text: 'Enter the complete, corrected result for this task'
           )
           correction_result[:input] || result
         else
@@ -266,9 +258,9 @@ module RCrewAI
 
     def request_retry_guidance(error)
       choices = [
-        "Retry with current settings",
-        "Modify task parameters and retry",
-        "Abort task execution"
+        'Retry with current settings',
+        'Modify task parameters and retry',
+        'Abort task execution'
       ]
 
       choice_result = request_human_choice(
@@ -290,9 +282,9 @@ module RCrewAI
 
     def request_task_modification
       modification_input = request_human_input(
-        "Please specify task modifications (JSON format):",
+        'Please specify task modifications (JSON format):',
         type: :json,
-        help_text: "Provide modifications as JSON, e.g. {\"description\": \"new description\", \"expected_output\": \"new output\"}"
+        help_text: 'Provide modifications as JSON, e.g. {"description": "new description", "expected_output": "new output"}'
       )
 
       if modification_input[:valid]
@@ -316,38 +308,38 @@ module RCrewAI
         when 'expected_output'
           @expected_output = value
         when 'max_retries'
-          @max_retries = value.to_i if value.to_i > 0
+          @max_retries = value.to_i if value.to_i.positive?
         end
       end
     end
 
     def validate_dependencies!
-      unless dependencies_met?
-        incomplete_deps = context.reject(&:completed?).map(&:name)
-        raise TaskDependencyError, "Dependencies not met: #{incomplete_deps.join(', ')}"
-      end
+      return if dependencies_met?
+
+      incomplete_deps = context.reject(&:completed?).map(&:name)
+      raise TaskDependencyError, "Dependencies not met: #{incomplete_deps.join(', ')}"
     end
 
     def provide_context_to_agent
       # Temporarily add task-specific tools to agent
       original_tools = agent.tools.dup
       combined_tools = (agent.tools + @tools).uniq
-      
+
       # Use metaprogramming to temporarily extend agent's tools
       agent.instance_variable_set(:@tools, combined_tools)
-      
+
       # Restore original tools after execution (handled by ensure in execute method)
       at_exit { agent.instance_variable_set(:@tools, original_tools) }
     end
 
     class CLI < Thor
-      desc "new NAME", "Create a new task"
+      desc 'new NAME', 'Create a new task'
       option :description, type: :string, required: true
       option :agent, type: :string
       option :expected_output, type: :string
       option :async, type: :boolean, default: false
       def new(name)
-        task = Task.new(
+        Task.new(
           name: name,
           description: options[:description],
           agent: options[:agent],
@@ -361,12 +353,12 @@ module RCrewAI
         puts "Async: #{options[:async]}"
       end
 
-      desc "list", "List all tasks"
+      desc 'list', 'List all tasks'
       def list
-        puts "Available tasks:"
-        puts "  - research_topic (Agent: researcher)"
-        puts "  - write_article (Agent: writer)"
-        puts "  - analyze_data (Agent: analyst)"
+        puts 'Available tasks:'
+        puts '  - research_topic (Agent: researcher)'
+        puts '  - write_article (Agent: writer)'
+        puts '  - analyze_data (Agent: analyst)'
       end
     end
   end

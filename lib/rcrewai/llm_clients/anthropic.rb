@@ -65,6 +65,7 @@ module RCrewAI
 
       def extract_system_message(messages)
         return nil unless messages.is_a?(Array)
+
         system_msg = messages.find { |m| m.is_a?(Hash) && m[:role] == 'system' }
         system_msg&.dig(:content)
       end
@@ -92,8 +93,8 @@ module RCrewAI
           usage: {
             'prompt_tokens' => response.dig('usage', 'input_tokens'),
             'completion_tokens' => response.dig('usage', 'output_tokens'),
-            'total_tokens' => (response.dig('usage', 'input_tokens') || 0) + 
-                             (response.dig('usage', 'output_tokens') || 0)
+            'total_tokens' => (response.dig('usage', 'input_tokens') || 0) +
+              (response.dig('usage', 'output_tokens') || 0)
           },
           model: response['model'],
           provider: :anthropic
@@ -101,8 +102,8 @@ module RCrewAI
       end
 
       def validate_config!
-        raise ConfigurationError, "Anthropic API key is required" unless config.anthropic_api_key || config.api_key
-        raise ConfigurationError, "Model is required" unless config.model
+        raise ConfigurationError, 'Anthropic API key is required' unless config.anthropic_api_key || config.api_key
+        raise ConfigurationError, 'Model is required' unless config.model
       end
 
       def handle_response(response)
@@ -113,9 +114,9 @@ module RCrewAI
           error_details = response.body.dig('error', 'message') || response.body
           raise APIError, "Bad request: #{error_details}"
         when 401
-          raise AuthenticationError, "Invalid API key"
+          raise AuthenticationError, 'Invalid API key'
         when 429
-          raise RateLimitError, "Rate limit exceeded"
+          raise RateLimitError, 'Rate limit exceeded'
         when 500..599
           raise APIError, "Server error: #{response.status}"
         else

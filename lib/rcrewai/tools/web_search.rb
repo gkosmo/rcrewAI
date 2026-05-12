@@ -18,14 +18,14 @@ module RCrewAI
 
       def execute(**params)
         validate_params!(params, required: [:query], optional: [:max_results])
-        
+
         query = params[:query]
         max_results = params[:max_results] || @max_results
-        
+
         begin
           search_results = perform_search(query, max_results)
           format_results(search_results)
-        rescue => e
+        rescue StandardError => e
           "Search failed: #{e.message}"
         end
       end
@@ -36,14 +36,12 @@ module RCrewAI
         # Use DuckDuckGo HTML search (no API key required)
         encoded_query = URI.encode_www_form_component(query)
         url = "https://html.duckduckgo.com/html/?q=#{encoded_query}"
-        
+
         response = http_client.get(url, {}, headers)
-        
-        if response.success?
-          parse_duckduckgo_results(response.body, max_results)
-        else
-          raise ToolError, "Search request failed with status: #{response.status}"
-        end
+
+        raise ToolError, "Search request failed with status: #{response.status}" unless response.success?
+
+        parse_duckduckgo_results(response.body, max_results)
       end
 
       def parse_duckduckgo_results(html, max_results)
@@ -62,13 +60,13 @@ module RCrewAI
           # Clean up URL (DuckDuckGo sometimes wraps URLs)
           url = clean_duckduckgo_url(url) if url
 
-          if title.present? && url.present?
-            results << {
-              title: title,
-              url: url,
-              snippet: snippet
-            }
-          end
+          next unless title.present? && url.present?
+
+          results << {
+            title: title,
+            url: url,
+            snippet: snippet
+          }
         end
 
         results
@@ -80,17 +78,15 @@ module RCrewAI
           # Extract the actual URL from the redirect
           uri = URI.parse("https://duckduckgo.com#{url}")
           query_params = URI.decode_www_form(uri.query || '')
-          actual_url = query_params.find { |k, v| k == 'uddg' }&.last
+          actual_url = query_params.find { |k, _v| k == 'uddg' }&.last
           return actual_url if actual_url
         end
-        
+
         url
       end
 
       def format_results(results)
-        if results.empty?
-          return "No search results found."
-        end
+        return 'No search results found.' if results.empty?
 
         formatted = "Search Results:\n\n"
         results.each_with_index do |result, index|
