@@ -96,7 +96,7 @@ RSpec.describe RCrewAI::Agent do
       expect(subject.instance_variable_get(:@logger)).to receive(:info)
         .with("Agent test_agent starting task: #{task.name}")
       expect(subject.instance_variable_get(:@logger)).to receive(:info).at_least(:once)
-        .with(/Task completed in \d+\.\d+s|runner=/)
+                                                                       .with(/Task completed in \d+\.\d+s|runner=/)
 
       subject.execute_task(task)
     end

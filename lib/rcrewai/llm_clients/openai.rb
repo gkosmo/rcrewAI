@@ -71,7 +71,7 @@ module RCrewAI
         normalize_non_streaming(body)
       end
 
-      def stream_chat(payload, sink)
+      def stream_chat(payload, sink) # rubocop:disable Metrics/AbcSize
         url = chat_url
         log_request(:post, url, payload)
 

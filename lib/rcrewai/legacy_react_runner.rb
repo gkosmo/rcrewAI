@@ -45,11 +45,11 @@ module RCrewAI
         finish_reason = response[:finish_reason]
         emit(Events::IterationEnd, iteration: iter, finish_reason: finish_reason)
 
-        if task_complete?(reasoning, action_result) || finish_reason == :stop
-          final = extract_final_result(reasoning, action_result)
-          return finalize(content: final, history: history, iter: iter,
-                          finish_reason: finish_reason || :stop, usage: total_usage)
-        end
+        next unless task_complete?(reasoning, action_result) || finish_reason == :stop
+
+        final = extract_final_result(reasoning, action_result)
+        return finalize(content: final, history: history, iter: iter,
+                        finish_reason: finish_reason || :stop, usage: total_usage)
       end
 
       final = extract_final_result(last_reasoning || '', last_action_result) ||
@@ -81,9 +81,7 @@ module RCrewAI
         begin
           result = tool.execute(**params)
           duration = monotonic_ms - started
-          if @agent.respond_to?(:memory) && @agent.memory
-            @agent.memory.add_tool_usage(tool_name, params, result)
-          end
+          @agent.memory.add_tool_usage(tool_name, params, result) if @agent.respond_to?(:memory) && @agent.memory
           emit(Events::ToolCallResult, iteration: iter, tool: tool_name,
                                        call_id: nil, result: result, duration_ms: duration)
           iteration_history << { tool: tool_name, args: params, result: result, duration_ms: duration }

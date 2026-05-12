@@ -25,7 +25,7 @@ module RCrewAI
         @base_url = BASE_URL
       end
 
-      def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options)
+      def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options) # rubocop:disable Lint/UnusedMethodArgument
         contents = format_messages(messages)
         payload = {
           contents: contents,

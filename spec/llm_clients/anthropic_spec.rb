@@ -63,7 +63,10 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
   it 'attaches cache_control to system blocks when cache_system: true' do
     captured_body = nil
     stub_request(:post, 'https://api.anthropic.com/v1/messages')
-      .with { |req| captured_body = JSON.parse(req.body); true }
+      .with do |req|
+      captured_body = JSON.parse(req.body)
+      true
+    end
       .to_return(status: 200,
                  body: '{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}',
                  headers: { 'Content-Type' => 'application/json' })

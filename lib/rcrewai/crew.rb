@@ -32,9 +32,7 @@ module RCrewAI
     def execute(async: false, stream: nil, **async_options, &block)
       sinks = []
       sinks << block if block_given?
-      if stream
-        Array(stream).each { |s| sinks << s }
-      end
+      Array(stream).each { |s| sinks << s } if stream
       @stream_sink = sinks.empty? ? nil : RCrewAI::Events.fan_out(sinks)
 
       if async

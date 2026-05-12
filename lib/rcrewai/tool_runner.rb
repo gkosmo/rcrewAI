@@ -16,7 +16,7 @@ module RCrewAI
       @sink = event_sink || ->(_) {}
     end
 
-    def run(messages:)
+    def run(messages:) # rubocop:disable Metrics/AbcSize
       msgs = messages.dup
       history = []
       iter = 0
@@ -58,9 +58,7 @@ module RCrewAI
           begin
             result = tool.execute_with_validation(tc[:arguments] || {})
             duration = monotonic_ms - started
-            if @agent.respond_to?(:memory) && @agent.memory
-              @agent.memory.add_tool_usage(tc[:name], tc[:arguments], result)
-            end
+            @agent.memory.add_tool_usage(tc[:name], tc[:arguments], result) if @agent.respond_to?(:memory) && @agent.memory
             emit(Events::ToolCallResult, iteration: iter,
                                          tool: tc[:name], call_id: tc[:id], result: result,
                                          duration_ms: duration)

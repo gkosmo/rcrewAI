@@ -22,11 +22,11 @@ RSpec.describe RCrewAI::LLMClients::Google do
 
     stub = stub_request(:post,
                         %r{generativelanguage\.googleapis\.com/v1beta/models/gemini-1\.5-pro:generateContent})
-           .with { |req|
+           .with do |req|
              body = JSON.parse(req.body)
              body['tools'].is_a?(Array) &&
                body.dig('tools', 0, 'function_declarations', 0, 'name') == 'web_search'
-           }
+           end
            .to_return(status: 200,
                       body: File.read('spec/fixtures/llm_responses/google/tool_call.json'),
                       headers: { 'Content-Type' => 'application/json' })

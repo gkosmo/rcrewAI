@@ -64,7 +64,7 @@ RSpec.describe RCrewAI::ToolRunner do
         tool_name 'bad'
         description 'bad'
         param :x, type: :string, required: true
-        def execute(x:); raise 'boom'; end
+        def execute(x:) = raise('boom') # rubocop:disable Lint/UnusedMethodArgument,Naming/MethodParameterName
       end.new
     end
 

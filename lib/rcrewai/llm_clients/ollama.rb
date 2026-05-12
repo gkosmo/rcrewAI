@@ -26,7 +26,7 @@ module RCrewAI
         @base_url = config.base_url || ollama_url || DEFAULT_URL
       end
 
-      def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options)
+      def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options) # rubocop:disable Lint/UnusedMethodArgument
         payload = {
           model: config.model,
           messages: format_messages(messages),

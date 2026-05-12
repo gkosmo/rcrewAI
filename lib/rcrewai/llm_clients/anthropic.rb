@@ -85,7 +85,7 @@ module RCrewAI
         normalize_non_streaming(body)
       end
 
-      def stream_chat(payload, sink)
+      def stream_chat(payload, sink) # rubocop:disable Metrics/AbcSize,Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity
         url = "#{@base_url}/messages"
         log_request(:post, url, payload)
 
@@ -103,9 +103,7 @@ module RCrewAI
             prompt_tokens = data.dig('message', 'usage', 'input_tokens')
           when 'content_block_start'
             cb = data['content_block'] || {}
-            if cb['type'] == 'tool_use'
-              blocks[data['index']] = { id: cb['id'], name: cb['name'], arguments: +'' }
-            end
+            blocks[data['index']] = { id: cb['id'], name: cb['name'], arguments: +'' } if cb['type'] == 'tool_use'
           when 'content_block_delta'
             delta = data['delta'] || {}
             case delta['type']

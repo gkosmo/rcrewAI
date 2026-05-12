@@ -9,9 +9,9 @@ RSpec.describe 'Agent streaming pass-through' do
     allow(fake_llm).to receive(:config).and_return(RCrewAI.configuration)
     allow(fake_llm).to receive(:chat) do |**kwargs|
       kwargs[:stream]&.call(RCrewAI::Events::TextDelta.new(
-                              type: :text_delta, timestamp: Time.now,
-                              agent: nil, iteration: nil, text: 'hi'
-                            ))
+        type: :text_delta, timestamp: Time.now,
+        agent: nil, iteration: nil, text: 'hi'
+      ))
       { content: 'hi', tool_calls: [], usage: {}, finish_reason: :stop,
         model: 'm', provider: :openai }
     end

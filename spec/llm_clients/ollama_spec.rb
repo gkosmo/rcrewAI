@@ -15,11 +15,11 @@ RSpec.describe RCrewAI::LLMClients::Ollama do
 
   it 'parses tool_calls from non-streamed response' do
     stub = stub_request(:post, 'http://localhost:11434/api/chat')
-           .with { |req|
+           .with do |req|
              body = JSON.parse(req.body)
              body['tools'].is_a?(Array) &&
                body.dig('tools', 0, 'function', 'name') == 'web_search'
-           }
+           end
            .to_return(status: 200,
                       body: File.read('spec/fixtures/llm_responses/ollama/tool_call.json'),
                       headers: { 'Content-Type' => 'application/json' })
