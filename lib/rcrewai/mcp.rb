@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require_relative 'mcp/client'
+
 module RCrewAI
-  VERSION = '0.3.0'
+  module MCP
+  end
 end

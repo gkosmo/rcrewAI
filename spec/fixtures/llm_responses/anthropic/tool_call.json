@@ -1,0 +1,10 @@
+{
+  "id": "msg_1",
+  "model": "claude-sonnet-4-6",
+  "role": "assistant",
+  "content": [
+    { "type": "tool_use", "id": "toolu_1", "name": "web_search", "input": { "query": "ruby" } }
+  ],
+  "stop_reason": "tool_use",
+  "usage": { "input_tokens": 50, "output_tokens": 10 }
+}

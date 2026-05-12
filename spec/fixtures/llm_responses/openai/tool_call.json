@@ -1,0 +1,18 @@
+{
+  "id": "chatcmpl-xyz",
+  "model": "gpt-4o",
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [{
+        "id": "call_1",
+        "type": "function",
+        "function": { "name": "web_search", "arguments": "{\"query\":\"ruby\"}" }
+      }]
+    },
+    "finish_reason": "tool_calls"
+  }],
+  "usage": { "prompt_tokens": 50, "completion_tokens": 10, "total_tokens": 60 }
+}

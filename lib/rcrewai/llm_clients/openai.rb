@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
+require 'faraday'
+require 'json'
 require_relative 'base'
+require_relative '../events'
+require_relative '../sse_parser'
+require_relative '../provider_schema'
+require_relative '../pricing'
 
 module RCrewAI
   module LLMClients
@@ -12,107 +18,178 @@ module RCrewAI
         @base_url = BASE_URL
       end
 
-      def chat(messages:, **options)
+      def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options)
         payload = {
           model: config.model,
-          messages: format_messages(messages),
+          messages: messages,
           temperature: options[:temperature] || config.temperature,
           max_tokens: options[:max_tokens] || config.max_tokens
-        }
+        }.compact
 
-        # Add additional OpenAI-specific options
         payload[:top_p] = options[:top_p] if options[:top_p]
         payload[:frequency_penalty] = options[:frequency_penalty] if options[:frequency_penalty]
         payload[:presence_penalty] = options[:presence_penalty] if options[:presence_penalty]
         payload[:stop] = options[:stop] if options[:stop]
 
-        url = "#{@base_url}/chat/completions"
-        log_request(:post, url, payload)
+        if tools && !tools.empty?
+          payload[:tools] = ProviderSchema.for_many(:openai, tools)
+          payload[:tool_choice] = tool_choice if tool_choice != :auto
+        end
 
-        response = http_client.post(url, payload, build_headers.merge(authorization_header))
-        log_response(response)
-
-        result = handle_response(response)
-        format_response(result)
+        if stream
+          payload[:stream] = true
+          payload[:stream_options] = { include_usage: true }
+          stream_chat(payload, stream)
+        else
+          plain_chat(payload)
+        end
       end
 
-      def complete(prompt:, **options)
-        # For older models that use completions endpoint
-        if config.model.include?('davinci') || config.model.include?('curie') ||
-           config.model.include?('babbage') || config.model.include?('ada')
-          completion_request(prompt, **options)
-        else
-          # Use chat endpoint for newer models
-          super
-        end
+      def supports_native_tools?(model: config.model) # rubocop:disable Lint/UnusedMethodArgument
+        true
       end
 
       def models
         url = "#{@base_url}/models"
-        response = http_client.get(url, {}, build_headers.merge(authorization_header))
+        response = http_client.get(url, {}, build_headers.merge(auth_header))
         result = handle_response(response)
         result['data'].map { |model| model['id'] }
       end
 
       private
 
-      def authorization_header
-        { 'Authorization' => "Bearer #{config.api_key}" }
+      def chat_url
+        "#{@base_url}/chat/completions"
       end
 
-      def completion_request(prompt, **options)
-        payload = {
-          model: config.model,
-          prompt: prompt,
-          temperature: options[:temperature] || config.temperature,
-          max_tokens: options[:max_tokens] || config.max_tokens
-        }
+      def plain_chat(payload)
+        url = chat_url
+        log_request(:post, url, payload)
+        response = http_client.post(url, payload, build_headers.merge(auth_header))
+        log_response(response)
+        body = handle_response(response)
+        normalize_non_streaming(body)
+      end
 
-        url = "#{@base_url}/completions"
+      def stream_chat(payload, sink) # rubocop:disable Metrics/AbcSize
+        url = chat_url
         log_request(:post, url, payload)
 
-        response = http_client.post(url, payload, build_headers.merge(authorization_header))
-        log_response(response)
+        assembled_text = +''
+        tool_calls_by_index = {}
+        final_usage = nil
+        finish_reason = nil
 
-        result = handle_response(response)
-        format_completion_response(result)
+        parser = SSEParser.new do |sse|
+          data_str = sse[:data]
+          next if data_str == '[DONE]'
+
+          data = JSON.parse(data_str)
+          choice = data.dig('choices', 0) || {}
+          delta = choice['delta'] || {}
+
+          if delta['content']
+            assembled_text << delta['content']
+            sink.call(Events::TextDelta.new(
+                        type: :text_delta, timestamp: Time.now, agent: nil, iteration: nil,
+                        text: delta['content']
+                      ))
+          end
+
+          Array(delta['tool_calls']).each do |tc|
+            idx = tc['index']
+            tool_calls_by_index[idx] ||= { id: nil, name: nil, arguments: +'' }
+            tool_calls_by_index[idx][:id]   ||= tc['id']
+            tool_calls_by_index[idx][:name] ||= tc.dig('function', 'name')
+            tool_calls_by_index[idx][:arguments] << (tc.dig('function', 'arguments') || '')
+          end
+
+          finish_reason ||= choice['finish_reason']&.to_sym
+
+          if data['usage']
+            final_usage = {
+              prompt_tokens: data['usage']['prompt_tokens'],
+              completion_tokens: data['usage']['completion_tokens'],
+              total_tokens: data['usage']['total_tokens']
+            }
+          end
+        end
+
+        streaming_post(url, payload) { |chunk| parser.feed(chunk) }
+
+        tool_calls = tool_calls_by_index.values.map do |tc|
+          {
+            id: tc[:id],
+            name: tc[:name],
+            arguments: tc[:arguments].empty? ? {} : JSON.parse(tc[:arguments])
+          }
+        end
+
+        if final_usage
+          sink.call(Events::Usage.new(
+                      type: :usage, timestamp: Time.now, agent: nil, iteration: nil,
+                      prompt_tokens: final_usage[:prompt_tokens],
+                      completion_tokens: final_usage[:completion_tokens],
+                      total_tokens: final_usage[:total_tokens],
+                      cost_usd: Pricing.cost_for(config.model,
+                                                 prompt_tokens: final_usage[:prompt_tokens],
+                                                 completion_tokens: final_usage[:completion_tokens])
+                    ))
+        end
+
+        {
+          content: assembled_text.empty? ? nil : assembled_text,
+          tool_calls: tool_calls,
+          usage: final_usage || {},
+          finish_reason: finish_reason || :stop,
+          model: config.model,
+          provider: provider_name
+        }
       end
 
-      def format_messages(messages)
-        messages.map do |msg|
-          if msg.is_a?(Hash)
-            msg
-          else
-            { role: 'user', content: msg.to_s }
-          end
+      def provider_name
+        :openai
+      end
+
+      def streaming_post(url, payload, &on_chunk)
+        conn = Faraday.new do |f|
+          f.request :json
+          f.options.timeout = config.timeout
+          f.adapter Faraday.default_adapter
+        end
+        conn.post(url) do |req|
+          req.headers = build_headers.merge(auth_header)
+          req.body = payload.to_json
+          req.options.on_data = proc { |chunk, _| on_chunk.call(chunk) }
         end
       end
 
-      def format_response(response)
-        choice = response.dig('choices', 0)
-        return nil unless choice
-
+      def normalize_non_streaming(body)
+        choice = body.dig('choices', 0) || {}
+        msg = choice['message'] || {}
+        tool_calls = Array(msg['tool_calls']).map do |tc|
+          {
+            id: tc['id'],
+            name: tc.dig('function', 'name'),
+            arguments: JSON.parse(tc.dig('function', 'arguments') || '{}')
+          }
+        end
         {
-          content: choice.dig('message', 'content'),
-          role: choice.dig('message', 'role'),
-          finish_reason: choice['finish_reason'],
-          usage: response['usage'],
-          model: response['model'],
-          provider: :openai
+          content: msg['content'],
+          tool_calls: tool_calls,
+          usage: {
+            prompt_tokens: body.dig('usage', 'prompt_tokens'),
+            completion_tokens: body.dig('usage', 'completion_tokens'),
+            total_tokens: body.dig('usage', 'total_tokens')
+          },
+          finish_reason: (choice['finish_reason'] || 'stop').to_sym,
+          model: body['model'] || config.model,
+          provider: provider_name
         }
       end
 
-      def format_completion_response(response)
-        choice = response.dig('choices', 0)
-        return nil unless choice
-
-        {
-          content: choice['text'],
-          finish_reason: choice['finish_reason'],
-          usage: response['usage'],
-          model: response['model'],
-          provider: :openai
-        }
+      def auth_header
+        { 'Authorization' => "Bearer #{config.openai_api_key || config.api_key}" }
       end
 
       def validate_config!
