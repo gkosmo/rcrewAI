@@ -7,10 +7,20 @@ require 'pathname'
 module RCrewAI
   module Tools
     class PdfProcessor < Base
+      tool_name        'pdf_processor'
+      description      'Extract text from a PDF file'
+      param :file_path,        type: :string, required: true, description: 'Path to the PDF'
+      param :pages,            type: :string, required: false,
+                               description: "Page selector: 'all', a range like '1-5', or comma-separated like '1,3,5'"
+      param :extract_text,     type: :boolean, default: true,
+                               description: 'Whether to extract page text'
+      param :extract_metadata, type: :boolean, default: true,
+                               description: 'Whether to extract PDF metadata (title, author, etc.)'
+      param :output_format,    type: :enum, default: 'text', values: %w[text json markdown],
+                               description: "Output format: 'text', 'json', or 'markdown'"
+
       def initialize(**options)
         super()
-        @name = 'pdfprocessor'
-        @description = 'Read and extract text from PDF files'
         @max_file_size = options.fetch(:max_file_size, 50_000_000) # 50MB
         @max_pages = options.fetch(:max_pages, 100)
         @extract_metadata = options.fetch(:extract_metadata, true)

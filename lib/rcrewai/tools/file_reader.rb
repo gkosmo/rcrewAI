@@ -6,10 +6,17 @@ require 'pathname'
 module RCrewAI
   module Tools
     class FileReader < Base
+      tool_name        'file_reader'
+      description      'Read the contents of a text file from disk'
+      param :file_path, type: :string,  required: true,
+                        description: 'Absolute or relative path to the file'
+      param :encoding,  type: :string,  default: 'utf-8',
+                        description: 'Text encoding (e.g. utf-8, iso-8859-1)'
+      param :lines,     type: :integer, required: false,
+                        description: 'If set, read only the first N lines'
+
       def initialize(**options)
         super()
-        @name = 'filereader'
-        @description = 'Read contents from files'
         @max_file_size = options.fetch(:max_file_size, 10_000_000) # 10MB
         @allowed_extensions = options.fetch(:allowed_extensions, %w[.txt .md .json .yaml .yml .csv .log])
       end

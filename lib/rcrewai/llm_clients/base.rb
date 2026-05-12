@@ -16,8 +16,12 @@ module RCrewAI
         validate_config!
       end
 
-      def chat(messages:, **options)
+      def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options)
         raise NotImplementedError, 'Subclasses must implement #chat method'
+      end
+
+      def supports_native_tools?(model: config.model) # rubocop:disable Lint/UnusedMethodArgument
+        true
       end
 
       def complete(prompt:, **options)

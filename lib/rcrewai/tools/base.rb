@@ -1,13 +1,55 @@
 # frozen_string_literal: true
 
+require_relative '../tool_schema'
+
 module RCrewAI
   module Tools
     class Base
-      attr_reader :name, :description
+      extend RCrewAI::ToolSchema
 
       def initialize
-        @name = self.class.name.split('::').last.downcase
-        @description = 'Base tool class'
+        # @name and @description are no longer set here.
+        # Instance #name and #description delegate to the class-level DSL
+        # (tool_name / description) via the fallback in the reader methods below.
+      end
+
+      def name
+        @name || self.class.tool_name
+      end
+
+      def description
+        @description || self.class.description
+      end
+
+      def json_schema
+        self.class.json_schema
+      end
+
+      def execute_with_validation(args_hash)
+        coerced = {}
+        schema_params = self.class.params
+
+        if schema_params.empty?
+          coerced = args_hash.transform_keys(&:to_sym)
+          return execute(**coerced)
+        end
+
+        schema_params.each do |p|
+          key_str = p[:name].to_s
+          key_sym = p[:name].to_sym
+          if args_hash.key?(key_str)
+            raw = args_hash[key_str]
+          elsif args_hash.key?(key_sym)
+            raw = args_hash[key_sym]
+          else
+            raise ToolError, "missing required param: #{p[:name]}" if p[:required]
+
+            next
+          end
+          coerced[key_sym] = coerce(raw, p[:type], p[:name])
+        end
+
+        execute(**coerced)
       end
 
       def execute(**params)
@@ -63,15 +105,36 @@ module RCrewAI
       end
 
       def self.list_available_tools
-        {
-          'websearch' => 'Search the web using DuckDuckGo',
-          'filereader' => 'Read contents from text files',
-          'filewriter' => 'Write content to text files',
-          'sqldatabase' => 'Execute SQL queries against databases',
-          'emailsender' => 'Send emails via SMTP',
-          'codeexecutor' => 'Execute code in various programming languages',
-          'pdfprocessor' => 'Read and extract text from PDF files'
-        }
+        available_tools.each_with_object({}) do |klass, h|
+          h[klass.tool_name] = klass.description
+        end
+      end
+
+      private
+
+      def coerce(value, type, name)
+        case type
+        when :integer
+          return value if value.is_a?(Integer)
+
+          Integer(value.to_s)
+        when :number
+          return value if value.is_a?(Numeric)
+
+          Float(value.to_s)
+        when :boolean
+          return value if [true, false].include?(value)
+
+          %w[true 1 yes].include?(value.to_s.downcase)
+        when :string, :enum
+          value.to_s
+        when :array, :object
+          value
+        else
+          value
+        end
+      rescue ArgumentError, TypeError
+        raise ToolError, "#{name} must be #{type}, got #{value.inspect}"
       end
     end
 

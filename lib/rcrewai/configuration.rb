@@ -2,8 +2,11 @@
 
 module RCrewAI
   class Configuration
-    attr_accessor :llm_provider, :api_key, :model, :temperature, :max_tokens, :timeout, :openai_api_key,
-                  :anthropic_api_key, :google_api_key, :azure_api_key, :openai_model, :anthropic_model, :google_model, :azure_model, :base_url, :api_version, :deployment_name
+    attr_accessor :llm_provider, :api_key, :model, :temperature, :max_tokens, :timeout,
+                  :openai_api_key, :anthropic_api_key, :google_api_key, :azure_api_key,
+                  :openai_model, :anthropic_model, :google_model, :azure_model,
+                  :base_url, :api_version, :deployment_name,
+                  :pricing, :ollama_native_tools, :log_level
 
     def initialize
       @llm_provider = :openai
@@ -17,6 +20,10 @@ module RCrewAI
       @anthropic_model = 'claude-3-sonnet-20240229'
       @google_model = 'gemini-pro'
       @azure_model = 'gpt-4'
+
+      @pricing = nil
+      @ollama_native_tools = nil
+      @log_level = :info
 
       # Load from environment variables
       load_from_env
