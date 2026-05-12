@@ -24,7 +24,7 @@ RCrewAI::MCP::Client.with_connection(
   args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp']
 ) do |client|
   puts "Connected to MCP server: #{client.server_name}"
-  puts "Available tools:"
+  puts 'Available tools:'
   client.tools.each { |t| puts "  - #{t.name}: #{t.description}" }
   puts
 

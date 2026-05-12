@@ -56,7 +56,7 @@ task = RCrewAI::Task.new(
 result = agent.execute_task(task)
 
 puts "Answer:    #{result[:content]}"
-puts "Tool calls:"
+puts 'Tool calls:'
 result[:tool_calls_history].each do |tc|
   puts "  - #{tc[:tool]}(#{tc[:args]}) -> #{tc[:result]}"
 end

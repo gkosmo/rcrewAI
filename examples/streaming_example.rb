@@ -51,6 +51,6 @@ fan = RCrewAI::Events.fan_out([printer, cost_tracker])
 agent.execute_task(task, stream: fan)
 
 puts
-puts "---"
+puts '---'
 puts "Total tokens: #{total_tokens}"
 puts "Total cost:   $#{format('%.4f', total_cost)}"
