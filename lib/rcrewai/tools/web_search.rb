@@ -8,12 +8,12 @@ require 'uri'
 module RCrewAI
   module Tools
     class WebSearch < Base
-      tool_name        "web_search"
-      description      "Search the web using DuckDuckGo and return top results"
+      tool_name        'web_search'
+      description      'Search the web using DuckDuckGo and return top results'
       param :query,       type: :string,  required: true,
-                          description: "Search query"
+                          description: 'Search query'
       param :max_results, type: :integer, default: 5,
-                          description: "Number of results to return (1-25)"
+                          description: 'Number of results to return (1-25)'
 
       def initialize(**options)
         super()

@@ -1,7 +1,8 @@
 # frozen_string_literal: true
+
 require 'spec_helper'
 
-RSpec.describe "built-in tool schemas" do
+RSpec.describe 'built-in tool schemas' do
   RCrewAI::Tools::Base.available_tools.each do |klass|
     describe klass do
       it 'declares a tool_name' do
@@ -24,8 +25,8 @@ RSpec.describe "built-in tool schemas" do
     end
   end
 
-  describe "global invariants" do
-    it "tool names are unique across built-ins" do
+  describe 'global invariants' do
+    it 'tool names are unique across built-ins' do
       names = RCrewAI::Tools::Base.available_tools.map(&:tool_name)
       expect(names.uniq).to eq(names)
     end
@@ -38,7 +39,7 @@ RSpec.describe "built-in tool schemas" do
         # Build a dummy args hash from required params only, with type-appropriate placeholders.
         dummy = required.each_with_object({}) do |p, h|
           h[p[:name].to_s] = case p[:type]
-                             when :string then "x"
+                             when :string then 'x'
                              when :integer then 1
                              when :number  then 1.0
                              when :boolean then true

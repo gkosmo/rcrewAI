@@ -7,17 +7,17 @@ require 'mail'
 module RCrewAI
   module Tools
     class EmailSender < Base
-      tool_name        "email_sender"
-      description      "Send an email via configured SMTP"
+      tool_name        'email_sender'
+      description      'Send an email via configured SMTP'
       param :to,       type: :string, required: true,
-                       description: "Recipient address. Multiple addresses may be separated by commas."
-      param :subject,  type: :string, required: true, description: "Email subject"
-      param :body,     type: :string, required: true, description: "Email body (plain text or HTML)"
-      param :cc,       type: :string, required: false, description: "CC recipients (comma-separated)"
-      param :bcc,      type: :string, required: false, description: "BCC recipients (comma-separated)"
-      param :reply_to, type: :string, required: false, description: "Reply-to address"
+                       description: 'Recipient address. Multiple addresses may be separated by commas.'
+      param :subject,  type: :string, required: true, description: 'Email subject'
+      param :body,     type: :string, required: true, description: 'Email body (plain text or HTML)'
+      param :cc,       type: :string, required: false, description: 'CC recipients (comma-separated)'
+      param :bcc,      type: :string, required: false, description: 'BCC recipients (comma-separated)'
+      param :reply_to, type: :string, required: false, description: 'Reply-to address'
       param :attachments, type: :array, required: false, items: { type: :string },
-                          description: "File paths to attach. Allowed extensions: pdf, txt, doc(x), xls(x), jpg, png, gif, zip."
+                          description: 'File paths to attach. Allowed extensions: pdf, txt, doc(x), xls(x), jpg, png, gif, zip.'
 
       def initialize(**options)
         super()

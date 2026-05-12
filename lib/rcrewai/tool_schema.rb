@@ -3,8 +3,8 @@
 module RCrewAI
   module ToolSchema
     TYPE_MAP = {
-      string: "string", integer: "integer", number: "number",
-      boolean: "boolean", array: "array", object: "object", enum: "string"
+      string: 'string', integer: 'integer', number: 'number',
+      boolean: 'boolean', array: 'array', object: 'object', enum: 'string'
     }.freeze
 
     def self.extended(base)
@@ -15,15 +15,18 @@ module RCrewAI
 
     def tool_name(name = nil)
       return @tool_name || name_default if name.nil?
+
       @tool_name = name.to_s
     end
 
     def description(desc = nil)
-      return @description || "" if desc.nil?
+      return @description || '' if desc.nil?
+
       @description = desc.to_s
     end
 
-    def param(name, type:, required: false, default: nil, description: nil, items: nil, values: nil, properties: nil)
+    def param(name, type:, required: false, default: nil, description: nil, # rubocop:disable Metrics/ParameterLists
+              items: nil, values: nil, properties: nil)
       @params ||= []
       @params << {
         name: name, type: type, required: required, default: default,
@@ -54,7 +57,7 @@ module RCrewAI
         return {
           name: tool_name,
           description: description,
-          parameters: { type: "object", additionalProperties: true }
+          parameters: { type: 'object', additionalProperties: true }
         }
       end
 
@@ -62,7 +65,7 @@ module RCrewAI
         name: tool_name,
         description: description,
         parameters: {
-          type: "object",
+          type: 'object',
           properties: props,
           required: required
         }
@@ -72,18 +75,21 @@ module RCrewAI
     private
 
     def name_default
-      raw = name.to_s.split("::").last
-      return "" if raw.nil? || raw.empty?
+      raw = name.to_s.split('::').last
+      return '' if raw.nil? || raw.empty?
+
       raw.gsub(/([a-z])([A-Z])/, '\1_\2').downcase
     end
 
-    def stringify_type(h)
-      return h unless h.is_a?(Hash) && h[:type].is_a?(Symbol)
-      h.merge(type: TYPE_MAP.fetch(h[:type]))
+    def stringify_type(hash)
+      return hash unless hash.is_a?(Hash) && hash[:type].is_a?(Symbol)
+
+      hash.merge(type: TYPE_MAP.fetch(hash[:type]))
     end
 
     def warn_once_no_dsl!
       return if @warned_no_dsl
+
       @warned_no_dsl = true
       Kernel.warn "[rcrewai] Tool #{name} has no DSL declarations; using permissive schema. Declare tool_name/description/param to opt in to a strict JSON schema."
     end

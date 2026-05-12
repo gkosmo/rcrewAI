@@ -11,7 +11,7 @@ module RCrewAI
     def initialize(&block)
       @on_event = block
       @buffer = String.new(encoding: Encoding::UTF_8)
-      @event = "message"
+      @event = 'message'
       @data_lines = []
     end
 
@@ -22,15 +22,15 @@ module RCrewAI
         line = @buffer.slice!(0, idx + 1).chomp
         if line.empty?
           dispatch
-        elsif line.start_with?(":")
+        elsif line.start_with?(':')
           # comment line, ignore
-        elsif (colon = line.index(":"))
+        elsif (colon = line.index(':'))
           field = line[0...colon]
           value = line[(colon + 1)..]
-          value = value[1..] if value.start_with?(" ")
+          value = value[1..] if value.start_with?(' ')
           handle_field(field, value)
         else
-          handle_field(line, "")
+          handle_field(line, '')
         end
       end
     end
@@ -39,15 +39,16 @@ module RCrewAI
 
     def handle_field(field, value)
       case field
-      when "event" then @event = value
-      when "data"  then @data_lines << value
+      when 'event' then @event = value
+      when 'data'  then @data_lines << value
       end
     end
 
     def dispatch
       return if @data_lines.empty?
+
       @on_event.call(event: @event, data: @data_lines.join("\n"))
-      @event = "message"
+      @event = 'message'
       @data_lines = []
     end
   end

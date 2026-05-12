@@ -7,7 +7,7 @@ module RCrewAI
     def for(provider, canonical)
       case provider.to_sym
       when :openai, :azure, :ollama
-        { type: "function", function: canonical }
+        { type: 'function', function: canonical }
       when :anthropic
         {
           name: canonical[:name],

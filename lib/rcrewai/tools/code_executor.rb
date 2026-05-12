@@ -8,16 +8,16 @@ require 'fileutils'
 module RCrewAI
   module Tools
     class CodeExecutor < Base
-      tool_name        "code_executor"
-      description      "Execute code in a sandboxed subprocess"
-      param :code,     type: :string,  required: true, description: "Source code to run"
+      tool_name        'code_executor'
+      description      'Execute code in a sandboxed subprocess'
+      param :code,     type: :string,  required: true, description: 'Source code to run'
       param :language, type: :enum,    required: true,
                        values: %w[ruby python javascript bash],
-                       description: "Language: ruby, python, javascript, or bash"
+                       description: 'Language: ruby, python, javascript, or bash'
       param :args,     type: :array,   required: false, items: { type: :string },
-                       description: "Optional command-line arguments to pass to the interpreter"
+                       description: 'Optional command-line arguments to pass to the interpreter'
       param :stdin,    type: :string,  required: false,
-                       description: "Optional stdin payload"
+                       description: 'Optional stdin payload'
 
       def initialize(**options)
         super()

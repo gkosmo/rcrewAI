@@ -20,7 +20,7 @@ module RCrewAI
         raise NotImplementedError, 'Subclasses must implement #chat method'
       end
 
-      def supports_native_tools?(model: config.model)
+      def supports_native_tools?(model: config.model) # rubocop:disable Lint/UnusedMethodArgument
         true
       end
 

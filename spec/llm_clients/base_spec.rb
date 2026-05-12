@@ -31,13 +31,14 @@ RSpec.describe RCrewAI::LLMClients::Base do
 
     it 'chat accepts tools and stream kwargs without ArgumentError' do
       subclass = Class.new(described_class) do
-        def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **opts)
-          { content: "ok", tool_calls: [], usage: {}, finish_reason: :stop, model: "m", provider: :test }
+        def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **_opts) # rubocop:disable Lint/UnusedMethodArgument
+          { content: 'ok', tool_calls: [], usage: {}, finish_reason: :stop, model: 'm', provider: :test }
         end
+
         def validate_config!; end
       end
-      out = subclass.new(config).chat(messages: [], tools: [{ name: "x" }], stream: ->(_) {})
-      expect(out[:content]).to eq("ok")
+      out = subclass.new(config).chat(messages: [], tools: [{ name: 'x' }], stream: ->(_) {})
+      expect(out[:content]).to eq('ok')
     end
   end
 
@@ -47,7 +48,7 @@ RSpec.describe RCrewAI::LLMClients::Base do
         def chat(messages:, **opts); end
         def validate_config!; end
       end
-      expect(subclass.new(config).supports_native_tools?(model: "m")).to be true
+      expect(subclass.new(config).supports_native_tools?(model: 'm')).to be true
     end
   end
 

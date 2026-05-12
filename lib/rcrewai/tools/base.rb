@@ -43,6 +43,7 @@ module RCrewAI
             raw = args_hash[key_sym]
           else
             raise ToolError, "missing required param: #{p[:name]}" if p[:required]
+
             next
           end
           coerced[key_sym] = coerce(raw, p[:type], p[:name])
@@ -115,12 +116,15 @@ module RCrewAI
         case type
         when :integer
           return value if value.is_a?(Integer)
+
           Integer(value.to_s)
         when :number
           return value if value.is_a?(Numeric)
+
           Float(value.to_s)
         when :boolean
           return value if [true, false].include?(value)
+
           %w[true 1 yes].include?(value.to_s.downcase)
         when :string, :enum
           value.to_s

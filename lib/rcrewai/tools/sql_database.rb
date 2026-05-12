@@ -6,12 +6,12 @@ require 'uri'
 module RCrewAI
   module Tools
     class SqlDatabase < Base
-      tool_name        "sql_database"
-      description      "Execute a read-only SQL query and return rows as JSON"
+      tool_name        'sql_database'
+      description      'Execute a read-only SQL query and return rows as JSON'
       param :query, type: :string,  required: true,
-                    description: "SQL query (SELECT only; write keywords are rejected)"
+                    description: 'SQL query (SELECT only; write keywords are rejected)'
       param :limit, type: :integer, required: false,
-                    description: "Optional maximum number of rows to return"
+                    description: 'Optional maximum number of rows to return'
 
       def initialize(**options)
         super()
