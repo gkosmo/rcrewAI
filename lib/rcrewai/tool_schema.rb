@@ -85,7 +85,7 @@ module RCrewAI
     def warn_once_no_dsl!
       return if @warned_no_dsl
       @warned_no_dsl = true
-      Kernel.warn "[rcrewai] Tool #{name} has no DSL declarations; using permissive schema. See docs/upgrading-to-0.3.md"
+      Kernel.warn "[rcrewai] Tool #{name} has no DSL declarations; using permissive schema. Declare tool_name/description/param to opt in to a strict JSON schema."
     end
   end
 end

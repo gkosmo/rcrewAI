@@ -16,6 +16,8 @@ module RCrewAI
       param :cc,       type: :string, required: false, description: "CC recipients (comma-separated)"
       param :bcc,      type: :string, required: false, description: "BCC recipients (comma-separated)"
       param :reply_to, type: :string, required: false, description: "Reply-to address"
+      param :attachments, type: :array, required: false, items: { type: :string },
+                          description: "File paths to attach. Allowed extensions: pdf, txt, doc(x), xls(x), jpg, png, gif, zip."
 
       def initialize(**options)
         super()
