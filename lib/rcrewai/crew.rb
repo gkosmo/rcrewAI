@@ -55,6 +55,35 @@ module RCrewAI
 
     attr_reader :stream_sink
 
+    # Runs the crew repeatedly, collecting feedback after each iteration and
+    # persisting it to +filename+ as JSON. +feedback+ is a callable
+    # ->(iteration, result) { "..." }; it defaults to prompting a human.
+    # Mirrors CrewAI's crew.train.
+    def train(n_iterations:, filename:, feedback: nil)
+      feedback ||= method(:default_training_feedback)
+      entries = []
+
+      (1..n_iterations).each do |iteration|
+        result = execute
+        note = feedback.call(iteration, result)
+        entries << { iteration: iteration, feedback: note }
+      end
+
+      write_training_file(filename, entries)
+      { iterations: n_iterations, filename: filename, entries: entries }
+    end
+
+    # Runs the crew repeatedly and scores each run. +scorer+ is a callable
+    # ->(result) { Float }; it defaults to the run's success_rate.
+    # Mirrors CrewAI's crew.test.
+    def test(n_iterations:, scorer: nil, model: nil) # rubocop:disable Lint/UnusedMethodArgument
+      scorer ||= ->(result) { result[:success_rate].to_f }
+      scores = (1..n_iterations).map { scorer.call(execute) }
+      average = scores.empty? ? 0.0 : (scores.sum / scores.length).round(2)
+
+      { iterations: n_iterations, scores: scores, average_score: average }
+    end
+
     def execute_async(**options)
       puts "Executing crew: #{name} (async #{process_type} process)"
 
@@ -112,6 +141,21 @@ module RCrewAI
     end
 
     private
+
+    def default_training_feedback(iteration, _result)
+      require_relative 'human_input'
+      response = HumanInput.new.request_input(
+        "Feedback for training iteration #{iteration} (press enter to skip):"
+      )
+      response.is_a?(Hash) ? response[:input].to_s : response.to_s
+    end
+
+    def write_training_file(filename, entries)
+      require 'json'
+      require 'fileutils'
+      FileUtils.mkdir_p(File.dirname(filename))
+      File.write(filename, JSON.pretty_generate(entries))
+    end
 
     def run_planning_pass
       return if @planned

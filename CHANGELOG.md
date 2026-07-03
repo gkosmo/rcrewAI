@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RCrewAI::OutputSchema` — a small JSON-schema-subset validator/coercer used by structured task output.
 - Crew planning: `Crew.new(planning: true)` runs a single planner pass before execution that asks an LLM to draft a short plan for each task and folds it into the task's description. Optional `planning_llm:` selects the planner client (defaults to the global provider). Best-effort — a planner error or unparseable output leaves tasks unchanged and execution proceeds. (#10)
 - `Task#enrich_description` appends supplementary guidance (used by the planner) without discarding the original instructions.
+- Training & testing workflows: `Crew#train(n_iterations:, filename:)` runs the crew repeatedly, collects feedback after each iteration (via a `feedback:` callable, defaulting to a human prompt), and persists it as JSON. `Crew#test(n_iterations:)` runs the crew repeatedly and reports per-run and average scores (via a `scorer:` callable, defaulting to the run's success rate). (#12)
 
 ## [0.3.0] - 2026-05-12
 

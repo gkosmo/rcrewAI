@@ -244,6 +244,23 @@ crew = RCrewAI::Crew.new('research_crew', planning: true,
 Planning is best-effort: if the planner errors or returns unparseable output,
 the crew runs with the original tasks unchanged.
 
+## 🏋️ Training & Testing
+
+Iterate on a crew by training it with feedback or scoring repeated runs:
+
+```ruby
+# Train: run N times, collect feedback after each run, persist to JSON.
+crew.train(n_iterations: 3, filename: 'training.json')
+
+# Provide feedback programmatically instead of prompting a human:
+crew.train(n_iterations: 3, filename: 'training.json',
+           feedback: ->(iteration, result) { "run #{iteration}: #{result[:success_rate]}%" })
+
+# Test: run N times and score each run (defaults to success_rate).
+crew.test(n_iterations: 5)
+# => { iterations: 5, scores: [...], average_score: 92.0 }
+```
+
 ## 💡 Examples
 
 ### Hierarchical Team with Human Oversight
