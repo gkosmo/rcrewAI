@@ -3,6 +3,7 @@
 require 'logger'
 require_relative 'llm_client'
 require_relative 'memory'
+require_relative 'rate_limiter'
 require_relative 'tools/base'
 require_relative 'tool_runner'
 require_relative 'legacy_react_runner'
@@ -11,7 +12,7 @@ require_relative 'human_input'
 module RCrewAI
   class Agent
     include HumanInteractionExtensions
-    attr_reader :name, :role, :goal, :backstory, :tools, :memory, :llm_client, :knowledge
+    attr_reader :name, :role, :goal, :backstory, :tools, :memory, :llm_client, :knowledge, :rate_limiter
     attr_accessor :verbose, :allow_delegation, :max_iterations, :max_execution_time, :manager
     # Set by the crew so agents see shared knowledge in addition to their own.
     attr_writer :crew_knowledge
@@ -33,7 +34,8 @@ module RCrewAI
       @logger = Logger.new($stdout)
       @logger.level = verbose ? Logger::DEBUG : Logger::INFO
       @memory = Memory.new
-      @llm_client = build_llm_client(options[:llm])
+      @rate_limiter = options[:max_rpm] ? RateLimiter.new(max_rpm: options[:max_rpm]) : nil
+      @llm_client = wrap_with_rate_limiter(build_llm_client(options[:llm]))
       @knowledge = build_knowledge(options[:knowledge], options[:knowledge_sources])
       @subordinates = [] # For manager agents
     end
@@ -200,6 +202,13 @@ module RCrewAI
     # Resolves the +llm:+ option into an LLM client. See LLMClient.resolve.
     def build_llm_client(llm)
       LLMClient.resolve(llm)
+    end
+
+    # Wraps the client so every #chat is throttled, when a rate limiter is set.
+    def wrap_with_rate_limiter(client)
+      return client unless @rate_limiter
+
+      RateLimiter::ThrottledClient.new(client, @rate_limiter)
     end
 
     # Accepts a pre-built Knowledge::Base via +knowledge:+ or an array of

@@ -281,6 +281,18 @@ results = crew.kickoff_for_each(inputs: [
 ])
 ```
 
+## ⏱️ Rate Limiting
+
+Cap an agent's LLM calls to stay under provider limits. Calls beyond the cap
+block until the rolling 60-second window frees up:
+
+```ruby
+agent = RCrewAI::Agent.new(name: 'a', role: '...', goal: '...', max_rpm: 20)
+```
+
+The limiter (`RCrewAI::RateLimiter`) is thread-safe, so it holds under async
+execution. `max_rpm: nil` (the default) or `0` means unlimited.
+
 ## 📚 Knowledge (RAG)
 
 Ground agents in your own documents. Sources are chunked, embedded, and stored
