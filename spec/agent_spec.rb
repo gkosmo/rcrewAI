@@ -403,3 +403,98 @@ RSpec.describe RCrewAI::Agent do
     end
   end
 end
+
+RSpec.describe RCrewAI::Agent do
+  let(:mock_llm_client) { double('LLMClient') }
+
+  before do
+    configure_test_llm
+    allow(RCrewAI::LLMClient).to receive(:for_provider).and_return(mock_llm_client)
+    allow(mock_llm_client).to receive(:supports_native_tools?).and_return(false)
+  end
+
+  describe 'reasoning' do
+    it 'defaults reasoning off' do
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g')
+
+      expect(agent.reasoning?).to be false
+    end
+
+    it 'accepts reasoning: true' do
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g', reasoning: true)
+
+      expect(agent.reasoning?).to be true
+    end
+
+    # The LegacyReactRunner stops when the content contains FINAL_ANSWER[...],
+    # so answer responses use that form to keep chat-call counts deterministic.
+    def answer(text)
+      mock_llm_response(content: "FINAL_ANSWER[#{text}]")
+    end
+
+    it 'runs a reasoning pass before answering and exposes the trace' do
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g', reasoning: true)
+      task = create_test_task(agent: agent)
+
+      # First chat = reasoning pass, second = the actual answer.
+      allow(mock_llm_client).to receive(:chat).and_return(
+        mock_llm_response(content: 'Step 1: gather data. Step 2: summarize.'),
+        answer('The final answer.')
+      )
+
+      result = agent.execute_task(task)
+
+      expect(result[:reasoning]).to include('Step 1: gather data')
+      expect(result[:content]).to eq('The final answer.')
+      expect(task.result).to eq('The final answer.') # trace does not pollute result
+    end
+
+    it 'does not run a reasoning pass when disabled' do
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g')
+      task = create_test_task(agent: agent)
+
+      allow(mock_llm_client).to receive(:chat).and_return(answer('The final answer.'))
+
+      result = agent.execute_task(task)
+
+      expect(result[:reasoning]).to be_nil
+      expect(mock_llm_client).to have_received(:chat).once
+    end
+
+    it 'retries the reasoning pass up to max_reasoning_attempts on empty output' do
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g',
+                                  reasoning: true, max_reasoning_attempts: 3)
+      task = create_test_task(agent: agent)
+
+      # Two empty reasoning attempts, then a good one, then the answer.
+      allow(mock_llm_client).to receive(:chat).and_return(
+        mock_llm_response(content: ''),
+        mock_llm_response(content: '   '),
+        mock_llm_response(content: 'A solid plan.'),
+        answer('The final answer.')
+      )
+
+      result = agent.execute_task(task)
+
+      expect(result[:reasoning]).to eq('A solid plan.')
+      expect(result[:content]).to eq('The final answer.')
+    end
+
+    it 'proceeds without reasoning if all attempts fail' do
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g',
+                                  reasoning: true, max_reasoning_attempts: 2)
+      task = create_test_task(agent: agent)
+
+      allow(mock_llm_client).to receive(:chat).and_return(
+        mock_llm_response(content: ''),
+        mock_llm_response(content: ''),
+        answer('The final answer.')
+      )
+
+      result = agent.execute_task(task)
+
+      expect(result[:reasoning]).to be_nil
+      expect(result[:content]).to eq('The final answer.')
+    end
+  end
+end

@@ -293,6 +293,23 @@ agent = RCrewAI::Agent.new(name: 'a', role: '...', goal: '...', max_rpm: 20)
 The limiter (`RCrewAI::RateLimiter`) is thread-safe, so it holds under async
 execution. `max_rpm: nil` (the default) or `0` means unlimited.
 
+## 🧠 Reasoning
+
+Have an agent think through a plan before answering. The reasoning trace is
+surfaced on the result and does not pollute `task.result`:
+
+```ruby
+agent = RCrewAI::Agent.new(name: 'a', role: '...', goal: '...',
+                           reasoning: true, max_reasoning_attempts: 3)
+
+result = agent.execute_task(task)
+result[:reasoning]   # => the plan the agent drafted before answering
+result[:content]     # => the final answer
+```
+
+Off by default. If the reasoning pass keeps returning empty output past
+`max_reasoning_attempts`, the agent proceeds without a plan.
+
 ## 📚 Knowledge (RAG)
 
 Ground agents in your own documents. Sources are chunked, embedded, and stored

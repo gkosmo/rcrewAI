@@ -33,6 +33,8 @@ module RCrewAI
       @require_approval_for_final_answer = options.fetch(:require_approval_for_final_answer, false)
       @logger = Logger.new($stdout)
       @logger.level = verbose ? Logger::DEBUG : Logger::INFO
+      @reasoning = options.fetch(:reasoning, false)
+      @max_reasoning_attempts = options.fetch(:max_reasoning_attempts, 3)
       @memory = Memory.new
       @rate_limiter = options[:max_rpm] ? RateLimiter.new(max_rpm: options[:max_rpm]) : nil
       @llm_client = wrap_with_rate_limiter(build_llm_client(options[:llm]))
@@ -47,6 +49,9 @@ module RCrewAI
       begin
         initial_messages = build_initial_messages(task)
         sink = stream || ->(_) {}
+
+        reasoning = reasoning? ? run_reasoning_pass(task) : nil
+        initial_messages = inject_reasoning(initial_messages, reasoning) if reasoning
 
         runner_class = pick_runner_class
         @logger.info "[rcrewai] agent=#{name} runner=#{runner_class.name.split('::').last}"
@@ -65,12 +70,16 @@ module RCrewAI
         memory.add_execution(task, result_string, execution_time)
         task.result = result_string
 
-        build_task_result(task, runner_result)
+        build_task_result(task, runner_result, reasoning: reasoning)
       rescue StandardError => e
         @logger.error "Task execution failed: #{e.message}"
         task.result = "Task failed: #{e.message}"
         raise AgentError, "Agent #{name} failed to execute task: #{e.message}"
       end
+    end
+
+    def reasoning?
+      @reasoning
     end
 
     def require_approval_for_tools?
@@ -275,7 +284,7 @@ module RCrewAI
       ''
     end
 
-    def build_task_result(task, runner_result)
+    def build_task_result(task, runner_result, reasoning: nil)
       {
         task: task.name,
         agent: name,
@@ -283,8 +292,41 @@ module RCrewAI
         tool_calls_history: runner_result[:tool_calls_history] || [],
         usage: runner_result[:usage] || {},
         iterations: runner_result[:iterations],
-        finish_reason: runner_result[:finish_reason]
+        finish_reason: runner_result[:finish_reason],
+        reasoning: reasoning
       }
+    end
+
+    # Asks the LLM to think through an approach before answering. Retries up to
+    # @max_reasoning_attempts if the model returns empty output; returns nil if
+    # every attempt is empty (execution then proceeds without a plan).
+    def run_reasoning_pass(task)
+      prompt = <<~PROMPT
+        You are #{role}. Before answering, think step by step about how to best
+        accomplish this task. Produce a short, concrete plan (do not answer yet).
+
+        Task: #{task.description}
+        Expected Output: #{task.expected_output || 'not specified'}
+      PROMPT
+
+      @max_reasoning_attempts.times do
+        response = @llm_client.chat(messages: [{ role: 'user', content: prompt }])
+        text = (response.is_a?(Hash) ? response[:content] : response).to_s.strip
+        return text unless text.empty?
+      end
+      nil
+    rescue StandardError => e
+      @logger.warn("Reasoning pass failed: #{e.message}")
+      nil
+    end
+
+    # Adds the reasoning trace to the user message so the answer pass can use it.
+    def inject_reasoning(messages, reasoning)
+      messages.map do |msg|
+        next msg unless msg[:role] == 'user'
+
+        { role: 'user', content: "#{msg[:content]}\n\nYour plan:\n#{reasoning}" }
+      end
     end
 
     def pick_runner_class
