@@ -14,10 +14,14 @@ of `0.3.0` the LLM plumbing is modern: native function calling across all five
 providers, a tool-schema DSL, typed streaming events, MCP client, and per-model
 pricing.
 
-Since CrewAI's `1.0`, the framework has grown a second pillar (**Flows**) plus
+Since CrewAI's `1.0`, the framework grew a second pillar (**Flows**) plus
 **Knowledge (RAG)**, **Guardrails**, **structured output**, **Planning**, and
-**Training/Testing**. RCrewAI implements roughly **60–70% of the classic Crews
-surface** and **~0% of the newer layer**. This roadmap closes that gap.
+**Training/Testing**. As of the `[Unreleased]` changes, RCrewAI now implements
+all of these — see the matrix below. Only backlog polish items remain.
+
+**Status: all milestone issues (#5–#12) are complete.** The remaining backlog
+covers smaller polish items (reasoning, rate-limiting, batch kickoff, kickoff
+hooks, multimodal).
 
 ## Parity matrix
 
@@ -29,15 +33,15 @@ surface** and **~0% of the newer layer**. This roadmap closes that gap.
 | Streaming events | ✅ | ✅ (0.3.0) | — |
 | MCP client | ✅ | ✅ (0.3.0) | — |
 | Per-model pricing / cost | ✅ | ✅ (0.3.0) | — |
-| Per-agent LLM override | ✅ | ❌ (global only) | **0.3.1** |
-| Structured output (schema) | ✅ | ❌ | **0.4.0** |
-| Task guardrails | ✅ | ❌ | **0.4.0** |
-| `output_file` / markdown | ✅ | ❌ | **0.4.0** |
-| Knowledge / RAG | ✅ | ❌ | **0.5.0** |
-| Planning | ✅ | ❌ | **0.5.0** |
-| Flows (`start`/`listen`/`router`) | ✅ | ❌ | **0.6.0** |
-| Flow state + persistence | ✅ | ❌ | **0.6.0** |
-| Training / Testing | ✅ | ❌ | **0.7.0** |
+| Per-agent LLM override | ✅ | ✅ (#5) | ✅ done |
+| Structured output (schema) | ✅ | ✅ (#6) | ✅ done |
+| Task guardrails | ✅ | ✅ (#7) | ✅ done |
+| `output_file` / markdown | ✅ | ✅ (#8) | ✅ done |
+| Knowledge / RAG | ✅ | ✅ (#9) | ✅ done |
+| Planning | ✅ | ✅ (#10) | ✅ done |
+| Flows (`start`/`listen`/`router`) | ✅ | ✅ (#11) | ✅ done |
+| Flow state + persistence | ✅ | ✅ (#11) | ✅ done |
+| Training / Testing | ✅ | ✅ (#12) | ✅ done |
 | Reasoning, rate-limiting, batch kickoff | ✅ | ❌ | backlog |
 
 ## Milestones (highest leverage first)
