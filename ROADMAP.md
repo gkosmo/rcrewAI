@@ -16,12 +16,11 @@ pricing.
 
 Since CrewAI's `1.0`, the framework grew a second pillar (**Flows**) plus
 **Knowledge (RAG)**, **Guardrails**, **structured output**, **Planning**, and
-**Training/Testing**. As of the `[Unreleased]` changes, RCrewAI now implements
-all of these — see the matrix below. Only backlog polish items remain.
+**Training/Testing**. RCrewAI now implements all of these — see the matrix below.
 
-**Status: all milestone issues (#5–#12) are complete.** The remaining backlog
-covers smaller polish items (reasoning, rate-limiting, batch kickoff, kickoff
-hooks, multimodal).
+**Status: complete.** All milestone issues (#5–#12) shipped in v0.4.0, and all
+backlog items (#15–#20) are done and merged to `main` (awaiting the next
+release). There is no outstanding roadmap work.
 
 ## Parity matrix
 
@@ -42,7 +41,7 @@ hooks, multimodal).
 | Flows (`start`/`listen`/`router`) | ✅ | ✅ (#11) | ✅ done |
 | Flow state + persistence | ✅ | ✅ (#11) | ✅ done |
 | Training / Testing | ✅ | ✅ (#12) | ✅ done |
-| Reasoning, rate-limiting, batch kickoff | ✅ | ❌ | backlog |
+| Reasoning, rate-limiting, batch kickoff, hooks, context window, multimodal | ✅ | ✅ (#15–#20) | ✅ done |
 
 ## Milestones (highest leverage first)
 
@@ -78,14 +77,14 @@ The flagship. A Ruby DSL mirroring CrewAI Flows:
 - `crew.train(n_iterations:, filename:)` capturing human feedback.
 - `crew.test(n_iterations:, model:)` scoring runs.
 
-### Backlog
+### Backlog — ✅ all complete
 
-Polish items with no set version — tracked as GitHub issues, prioritized by
-real demand:
+Formerly polish items with no set version; all shipped in the `[Unreleased]`
+changes (see CHANGELOG):
 
-- [#15](https://github.com/gkosmo/rcrewAI/issues/15) — `before_kickoff` / `after_kickoff` lifecycle hooks (small)
-- [#16](https://github.com/gkosmo/rcrewAI/issues/16) — `kickoff_for_each` batch execution (small)
-- [#17](https://github.com/gkosmo/rcrewAI/issues/17) — `max_rpm` rate limiting (medium; most practically useful)
-- [#18](https://github.com/gkosmo/rcrewAI/issues/18) — per-agent reasoning (`reasoning:`, `max_reasoning_attempts:`) (medium)
-- [#19](https://github.com/gkosmo/rcrewAI/issues/19) — `respect_context_window` history trimming (medium)
-- [#20](https://github.com/gkosmo/rcrewAI/issues/20) — multimodal agents (image/file inputs) (larger)
+- [#15](https://github.com/gkosmo/rcrewAI/issues/15) — `before_kickoff` / `after_kickoff` lifecycle hooks ✅
+- [#16](https://github.com/gkosmo/rcrewAI/issues/16) — `kickoff_for_each` batch execution ✅
+- [#17](https://github.com/gkosmo/rcrewAI/issues/17) — `max_rpm` rate limiting ✅
+- [#18](https://github.com/gkosmo/rcrewAI/issues/18) — per-agent reasoning (`reasoning:`, `max_reasoning_attempts:`) ✅
+- [#19](https://github.com/gkosmo/rcrewAI/issues/19) — `respect_context_window` history trimming ✅
+- [#20](https://github.com/gkosmo/rcrewAI/issues/20) — multimodal agents (image/file inputs) ✅
