@@ -194,27 +194,9 @@ module RCrewAI
 
     private
 
-    # Resolves the +llm:+ option into an LLM client.
-    #   nil            -> global provider (default)
-    #   Symbol/String  -> that provider, global model
-    #   Hash           -> { provider:, model:, api_key:, temperature: } overrides
-    #   client object  -> used as-is (anything responding to #chat)
+    # Resolves the +llm:+ option into an LLM client. See LLMClient.resolve.
     def build_llm_client(llm)
-      case llm
-      when nil
-        LLMClient.for_provider
-      when Symbol, String
-        config = RCrewAI.configuration.with_overrides(provider: llm)
-        LLMClient.for_provider(config.llm_provider, config)
-      when Hash
-        config = RCrewAI.configuration.with_overrides(**llm)
-        LLMClient.for_provider(config.llm_provider, config)
-      else
-        return llm if llm.respond_to?(:chat)
-
-        raise ConfigurationError,
-              "Invalid llm: expected a provider symbol, an options hash, or a client responding to #chat, got #{llm.class}"
-      end
+      LLMClient.resolve(llm)
     end
 
     def build_context(task)

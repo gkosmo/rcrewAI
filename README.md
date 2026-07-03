@@ -228,6 +228,22 @@ task.structured_output  # => { "title" => "...", "words" => 1234 }
 task.raw_result         # => the unprocessed string the agent produced
 ```
 
+## 🗺️ Planning
+
+Enable `planning:` on a crew to run a planner pass before execution. The planner
+drafts a short plan for each task and folds it into the task description, giving
+the executing agent a head start:
+
+```ruby
+crew = RCrewAI::Crew.new('research_crew', planning: true)
+# Optionally use a dedicated (e.g. stronger) planner model:
+crew = RCrewAI::Crew.new('research_crew', planning: true,
+                         planning_llm: { provider: :anthropic, model: 'claude-3-opus-20240229' })
+```
+
+Planning is best-effort: if the planner errors or returns unparseable output,
+the crew runs with the original tasks unchanged.
+
 ## 💡 Examples
 
 ### Hierarchical Team with Human Oversight

@@ -178,6 +178,12 @@ module RCrewAI
       @context << task unless @context.include?(task)
     end
 
+    # Appends supplementary guidance (e.g. a planning step) to the task's
+    # description without discarding the original instructions.
+    def enrich_description(text)
+      @description = "#{@description}\n\n#{text}"
+    end
+
     def add_tool(tool)
       @tools << tool unless @tools.include?(tool)
     end

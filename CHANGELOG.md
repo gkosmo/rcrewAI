@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Task guardrails: `Task.new(guardrail:)` takes a callable returning `[ok, value_or_error]` to validate and transform output before it flows downstream, retrying up to `guardrail_max_retries` (default 3) with the rejection reason fed back to the agent. (#7)
 - Task output persistence & formatting: `Task.new(output_file:)` writes the result to disk (`create_directory:` controls parent-dir creation, default true), and `markdown: true` prepends a heading when the output isn't already a markdown document. (#8)
 - `RCrewAI::OutputSchema` — a small JSON-schema-subset validator/coercer used by structured task output.
+- Crew planning: `Crew.new(planning: true)` runs a single planner pass before execution that asks an LLM to draft a short plan for each task and folds it into the task's description. Optional `planning_llm:` selects the planner client (defaults to the global provider). Best-effort — a planner error or unparseable output leaves tasks unchanged and execution proceeds. (#10)
+- `Task#enrich_description` appends supplementary guidance (used by the planner) without discarding the original instructions.
 
 ## [0.3.0] - 2026-05-12
 

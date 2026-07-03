@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require 'logger'
 require_relative 'process'
 require_relative 'async_executor'
 require_relative 'events'
+require_relative 'planning'
 
 module RCrewAI
   class Crew
@@ -17,8 +19,15 @@ module RCrewAI
       @process_type = options.fetch(:process, :sequential)
       @verbose = options.fetch(:verbose, false)
       @max_iterations = options.fetch(:max_iterations, 10)
+      @planning = options.fetch(:planning, false)
+      @planning_llm = options[:planning_llm]
+      @planned = false
       @process_instance = nil
       validate_process_type!
+    end
+
+    def planning?
+      @planning
     end
 
     def add_agent(agent)
@@ -34,6 +43,8 @@ module RCrewAI
       sinks << block if block_given?
       Array(stream).each { |s| sinks << s } if stream
       @stream_sink = sinks.empty? ? nil : RCrewAI::Events.fan_out(sinks)
+
+      run_planning_pass if planning?
 
       if async
         execute_async(**async_options)
@@ -101,6 +112,15 @@ module RCrewAI
     end
 
     private
+
+    def run_planning_pass
+      return if @planned
+
+      logger = Logger.new($stdout)
+      logger.level = verbose ? Logger::DEBUG : Logger::INFO
+      Planning.new(self, llm: LLMClient.resolve(@planning_llm), logger: logger).plan!
+      @planned = true
+    end
 
     def validate_process_type!
       valid_processes = %i[sequential hierarchical consensual]
