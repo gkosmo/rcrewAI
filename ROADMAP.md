@@ -79,6 +79,13 @@ The flagship. A Ruby DSL mirroring CrewAI Flows:
 - `crew.test(n_iterations:, model:)` scoring runs.
 
 ### Backlog
-Per-agent reasoning (`reasoning:`, `max_reasoning_attempts:`), `max_rpm`
-rate-limiting, `respect_context_window`, `kickoff_for_each` batch execution,
-`before_kickoff` / `after_kickoff` hooks, multimodal agents.
+
+Polish items with no set version — tracked as GitHub issues, prioritized by
+real demand:
+
+- [#15](https://github.com/gkosmo/rcrewAI/issues/15) — `before_kickoff` / `after_kickoff` lifecycle hooks (small)
+- [#16](https://github.com/gkosmo/rcrewAI/issues/16) — `kickoff_for_each` batch execution (small)
+- [#17](https://github.com/gkosmo/rcrewAI/issues/17) — `max_rpm` rate limiting (medium; most practically useful)
+- [#18](https://github.com/gkosmo/rcrewAI/issues/18) — per-agent reasoning (`reasoning:`, `max_reasoning_attempts:`) (medium)
+- [#19](https://github.com/gkosmo/rcrewAI/issues/19) — `respect_context_window` history trimming (medium)
+- [#20](https://github.com/gkosmo/rcrewAI/issues/20) — multimodal agents (image/file inputs) (larger)
