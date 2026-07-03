@@ -19,6 +19,8 @@ RCrewAI is a Ruby implementation of the CrewAI framework, allowing you to create
 - **🏗️ Hierarchical Teams**: Manager agents that coordinate and delegate tasks to specialist agents
 - **🔒 Production Ready**: Security controls, error handling, logging, monitoring, and sandboxing
 - **🎯 Flexible Orchestration**: Sequential, hierarchical, and concurrent execution modes
+- **🌊 Flows**: Event-driven workflows with `start`/`listen`/`router`, branching, and persistent state
+- **📚 Knowledge (RAG)**: Ground agents in your own documents with built-in retrieval
 - **💎 Ruby-First Design**: Built specifically for Ruby developers with idiomatic patterns
 
 ## 📦 Installation
@@ -289,6 +291,51 @@ crew = RCrewAI::Crew.new('support_crew', knowledge: kb)
 Embeddings default to OpenAI's `text-embedding-3-small`; pass a custom
 `embedder:` (anything responding to `embed(texts)`) or vector store to swap the
 backend.
+
+## 🌊 Flows
+
+Beyond crews, RCrewAI has **Flows** — an event-driven workflow engine for
+orchestrating steps (and whole crews) with explicit branching and state:
+
+```ruby
+class ArticleFlow < RCrewAI::Flow
+  start :outline
+  def outline
+    state.sections = %w[intro body conclusion]
+    state.sections.length
+  end
+
+  listen :outline
+  def draft(section_count)
+    state.words = section_count * 100
+    state.words
+  end
+
+  router :draft
+  def review(words)
+    words >= 250 ? :publish : :expand
+  end
+
+  listen :publish
+  def publish = state.status = 'published'
+
+  listen :expand
+  def expand = state.status = 'needs more work'
+end
+
+flow = ArticleFlow.new
+flow.kickoff(inputs: { author: 'me' })
+flow.state.status      # => "published"
+flow.state.id          # => automatic UUID
+```
+
+- `start` / `listen` / `router` wire methods into a graph; a listener receives
+  its trigger's return value.
+- Combine triggers with `and_(:a, :b)` (all) and `or_(:a, :b)` (any).
+- **State** is a schemaless object with a UUID, seedable via `kickoff(inputs:)`.
+- **Persistence**: pass `state_store:` (`RCrewAI::Flow::FileStateStore.new(dir)`
+  or your own `#save`/`#load`) and call `flow.restore(id)` to resume.
+- Invoke a `Crew` inside any step, or pause with `human_feedback('Approve?')`.
 
 ## 💡 Examples
 
