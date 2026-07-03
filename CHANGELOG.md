@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-03
+
+Polish release completing the roadmap backlog: crew lifecycle hooks, batch
+execution, rate limiting, per-agent reasoning, context-window management, and
+multimodal image input. All additive — existing code runs unchanged.
+
 ### Added
 - Crew lifecycle hooks: `Crew#before_kickoff` and `Crew#after_kickoff` register callbacks that run before/after execution. A `before_kickoff` hook receives the inputs hash (passed via `crew.execute(inputs:)`) and may transform it; an `after_kickoff` hook receives the result and may transform it. Multiple hooks run in registration order. The (possibly transformed) inputs are exposed on `Crew#last_inputs`. (#15)
 - `Crew#kickoff_for_each(inputs:)` runs the crew once per input set and returns one result per input, in order. Runs are isolated — each execution starts from only its own inputs. (#16)
@@ -173,7 +179,8 @@ output, guardrails, planning, and training/testing. See `ROADMAP.md`.
 - CLI usage documentation
 - Real-world use cases and examples
 
-[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/gkosmo/rcrewAI/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/gkosmo/rcrewAI/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/gkosmo/rcrewAI/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/gkosmo/rcrewAI/releases/tag/v0.1.0
