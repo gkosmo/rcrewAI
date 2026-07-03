@@ -261,6 +261,35 @@ crew.test(n_iterations: 5)
 # => { iterations: 5, scores: [...], average_score: 92.0 }
 ```
 
+## 📚 Knowledge (RAG)
+
+Ground agents in your own documents. Sources are chunked, embedded, and stored
+in an in-memory vector store; the most relevant chunks are injected into each
+task's prompt automatically.
+
+```ruby
+kb = RCrewAI::Knowledge::Base.new(sources: [
+  RCrewAI::Knowledge::StringSource.new('Our refund window is 30 days.'),
+  RCrewAI::Knowledge::FileSource.new('docs/policy.txt'),
+  RCrewAI::Knowledge::PdfSource.new('handbook.pdf'),
+  RCrewAI::Knowledge::UrlSource.new('https://example.com/faq')
+])
+
+# Agent-level (role-specific) knowledge:
+support = RCrewAI::Agent.new(name: 'support', role: '...', goal: '...', knowledge: kb)
+
+# Or pass raw sources and let the agent build the base:
+support = RCrewAI::Agent.new(name: 'support', role: '...', goal: '...',
+                             knowledge_sources: [RCrewAI::Knowledge::StringSource.new('...')])
+
+# Crew-level knowledge is shared with every agent:
+crew = RCrewAI::Crew.new('support_crew', knowledge: kb)
+```
+
+Embeddings default to OpenAI's `text-embedding-3-small`; pass a custom
+`embedder:` (anything responding to `embed(texts)`) or vector store to swap the
+backend.
+
 ## 💡 Examples
 
 ### Hierarchical Team with Human Oversight

@@ -11,8 +11,10 @@ require_relative 'human_input'
 module RCrewAI
   class Agent
     include HumanInteractionExtensions
-    attr_reader :name, :role, :goal, :backstory, :tools, :memory, :llm_client
+    attr_reader :name, :role, :goal, :backstory, :tools, :memory, :llm_client, :knowledge
     attr_accessor :verbose, :allow_delegation, :max_iterations, :max_execution_time, :manager
+    # Set by the crew so agents see shared knowledge in addition to their own.
+    attr_writer :crew_knowledge
 
     def initialize(name:, role:, goal:, backstory: nil, tools: [], **options)
       @name = name
@@ -32,6 +34,7 @@ module RCrewAI
       @logger.level = verbose ? Logger::DEBUG : Logger::INFO
       @memory = Memory.new
       @llm_client = build_llm_client(options[:llm])
+      @knowledge = build_knowledge(options[:knowledge], options[:knowledge_sources])
       @subordinates = [] # For manager agents
     end
 
@@ -199,6 +202,16 @@ module RCrewAI
       LLMClient.resolve(llm)
     end
 
+    # Accepts a pre-built Knowledge::Base via +knowledge:+ or an array of
+    # sources via +knowledge_sources:+ (wrapped in a Base). Returns nil if
+    # neither is given.
+    def build_knowledge(knowledge, sources)
+      return knowledge if knowledge
+      return nil if sources.nil? || sources.empty?
+
+      Knowledge::Base.new(sources: sources)
+    end
+
     def build_context(task)
       context = {
         agent_role: role,
@@ -231,10 +244,26 @@ module RCrewAI
       user << "\nExpected Output: #{task.expected_output}" if task.expected_output
       user << "\nAdditional Context:\n#{ctx[:context_data]}" if ctx[:context_data] && !ctx[:context_data].to_s.empty?
 
+      knowledge = retrieve_knowledge(task)
+      user << "\n\nRelevant Knowledge:\n#{knowledge}" unless knowledge.empty?
+
       [
         { role: 'system', content: system },
         { role: 'user', content: user }
       ]
+    end
+
+    # Retrieves knowledge chunks relevant to the task from the agent's own
+    # knowledge base and/or the crew-level base injected via #knowledge=.
+    def retrieve_knowledge(task)
+      bases = [@knowledge, @crew_knowledge].compact
+      return '' if bases.empty?
+
+      chunks = bases.flat_map { |kb| kb.search(task.description, k: 3) }
+      chunks.uniq.join("\n---\n")
+    rescue StandardError => e
+      @logger.warn("Knowledge retrieval failed: #{e.message}")
+      ''
     end
 
     def build_task_result(task, runner_result)

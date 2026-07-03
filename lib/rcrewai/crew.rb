@@ -22,9 +22,12 @@ module RCrewAI
       @planning = options.fetch(:planning, false)
       @planning_llm = options[:planning_llm]
       @planned = false
+      @knowledge = build_knowledge(options[:knowledge], options[:knowledge_sources])
       @process_instance = nil
       validate_process_type!
     end
+
+    attr_reader :knowledge, :stream_sink
 
     def planning?
       @planning
@@ -44,6 +47,7 @@ module RCrewAI
       Array(stream).each { |s| sinks << s } if stream
       @stream_sink = sinks.empty? ? nil : RCrewAI::Events.fan_out(sinks)
 
+      distribute_knowledge if @knowledge
       run_planning_pass if planning?
 
       if async
@@ -52,8 +56,6 @@ module RCrewAI
         execute_sync
       end
     end
-
-    attr_reader :stream_sink
 
     # Runs the crew repeatedly, collecting feedback after each iteration and
     # persisting it to +filename+ as JSON. +feedback+ is a callable
@@ -141,6 +143,18 @@ module RCrewAI
     end
 
     private
+
+    def build_knowledge(knowledge, sources)
+      return knowledge if knowledge
+      return nil if sources.nil? || sources.empty?
+
+      Knowledge::Base.new(sources: sources)
+    end
+
+    def distribute_knowledge
+      @knowledge.build!
+      agents.each { |agent| agent.crew_knowledge = @knowledge if agent.respond_to?(:crew_knowledge=) }
+    end
 
     def default_training_feedback(iteration, _result)
       require_relative 'human_input'
