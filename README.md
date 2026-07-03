@@ -325,6 +325,26 @@ Window sizes come from `RCrewAI::ContextWindow` (with a conservative default for
 unknown models); headroom for the response is reserved from `max_tokens`. Off by
 default.
 
+## 🖼️ Multimodal Input
+
+Pass images to a vision-capable model via task attachments. Local files are
+base64-encoded automatically; URLs pass through:
+
+```ruby
+RCrewAI.configure { |c| c.llm_provider = :openai; c.openai_model = 'gpt-4o' }
+
+task = RCrewAI::Task.new(
+  name: 'describe', description: 'What is in this chart?', agent: agent,
+  attachments: [
+    { type: :image, path: 'chart.png' },
+    { type: :image, url: 'https://example.com/photo.jpg' }
+  ]
+)
+```
+
+Supported on OpenAI and Azure; other providers raise a clear error when
+attachments are present.
+
 ## 📚 Knowledge (RAG)
 
 Ground agents in your own documents. Sources are chunked, embedded, and stored
