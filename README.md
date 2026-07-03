@@ -310,6 +310,21 @@ result[:content]     # => the final answer
 Off by default. If the reasoning pass keeps returning empty output past
 `max_reasoning_attempts`, the agent proceeds without a plan.
 
+## 🪟 Context Window Management
+
+Keep long tool-use loops or large injected context from overflowing the model's
+context window. When enabled, the oldest non-system messages are dropped to fit
+before each LLM call (system messages and the latest message are always kept):
+
+```ruby
+agent = RCrewAI::Agent.new(name: 'a', role: '...', goal: '...',
+                           respect_context_window: true)
+```
+
+Window sizes come from `RCrewAI::ContextWindow` (with a conservative default for
+unknown models); headroom for the response is reserved from `max_tokens`. Off by
+default.
+
 ## 📚 Knowledge (RAG)
 
 Ground agents in your own documents. Sources are chunked, embedded, and stored

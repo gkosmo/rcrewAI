@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Crew#kickoff_for_each(inputs:)` runs the crew once per input set and returns one result per input, in order. Runs are isolated — each execution starts from only its own inputs. (#16)
 - Rate limiting: `Agent.new(max_rpm:)` throttles the agent's LLM calls to the given requests-per-minute using a thread-safe rolling-window `RCrewAI::RateLimiter`. The agent's client is transparently wrapped (`RateLimiter::ThrottledClient`) so every `chat` acquires a slot first; `max_rpm` nil/0 means unlimited. (#17)
 - Reasoning: `Agent.new(reasoning: true)` runs a reasoning/planning pass before answering — the LLM drafts a short plan for the task, which is injected into the answer prompt and surfaced on the result hash as `:reasoning` (without polluting `task.result`). Bounded by `max_reasoning_attempts` (default 3), retrying if the model returns empty output; if every attempt is empty, execution proceeds without a plan. Off by default. (#18)
+- Context-window management: `Agent.new(respect_context_window: true)` trims the message history to fit the model's context window before each LLM call, dropping the oldest non-system messages while always keeping system messages and the latest message. The new `RCrewAI::ContextWindow` module provides the token estimate (chars/4 heuristic), a per-model window-size table, and the `fit` trimmer. Off by default. (#19)
 
 ## [0.4.0] - 2026-07-03
 
