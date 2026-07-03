@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'tmpdir'
+require 'fileutils'
 
 RSpec.describe RCrewAI::Task do
   let(:agent) { create_test_agent }
@@ -403,6 +405,151 @@ RSpec.describe RCrewAI::Task do
         expect(subject.instance_variable_get(:@allow_human_guidance)).to be false
         expect(subject.instance_variable_get(:@human_review_points)).to eq([])
       end
+    end
+  end
+end
+
+RSpec.describe RCrewAI::Task do
+  let(:agent) { create_test_agent }
+
+  def build_task(**opts)
+    described_class.new(name: 't', description: 'd', agent: agent, **opts)
+  end
+
+  describe 'structured output' do
+    let(:schema) do
+      {
+        type: 'object',
+        properties: { title: { type: 'string' }, count: { type: 'integer' } },
+        required: ['title']
+      }
+    end
+
+    it 'parses JSON output into structured_output when a schema is given' do
+      allow(agent).to receive(:execute_task).and_return('{"title": "Hi", "count": 3}')
+      task = build_task(output_schema: schema)
+
+      task.execute
+
+      expect(task.structured_output).to eq({ 'title' => 'Hi', 'count' => 3 })
+    end
+
+    it 'coerces JSON embedded in surrounding prose' do
+      allow(agent).to receive(:execute_task)
+        .and_return('Sure! Here is the result:\n{"title": "Hi"}\nHope that helps.')
+      task = build_task(output_schema: schema)
+
+      task.execute
+
+      expect(task.structured_output).to eq({ 'title' => 'Hi' })
+    end
+
+    it 'keeps the raw string available via raw_result' do
+      allow(agent).to receive(:execute_task).and_return('{"title": "Hi"}')
+      task = build_task(output_schema: schema)
+
+      task.execute
+
+      expect(task.raw_result).to eq('{"title": "Hi"}')
+    end
+
+    it 'retries by re-running the agent when output does not satisfy the schema' do
+      responses = ['not json at all', '{"title": "Fixed"}']
+      allow(agent).to receive(:execute_task) { responses.shift }
+      task = build_task(output_schema: schema, max_retries: 2)
+
+      task.execute
+
+      expect(task.structured_output).to eq({ 'title' => 'Fixed' })
+    end
+
+    it 'does nothing special without a schema' do
+      allow(agent).to receive(:execute_task).and_return('plain text')
+      task = build_task
+
+      task.execute
+
+      expect(task.structured_output).to be_nil
+      expect(task.raw_result).to eq('plain text')
+    end
+  end
+
+  describe 'guardrails' do
+    it 'passes output through unchanged when the guardrail accepts it' do
+      allow(agent).to receive(:execute_task).and_return('costs $5')
+      guardrail = ->(out) { [out.include?('$'), out] }
+      task = build_task(guardrail: guardrail)
+
+      expect(task.execute).to eq('costs $5')
+    end
+
+    it 'replaces the result with the guardrail transformed value' do
+      allow(agent).to receive(:execute_task).and_return('  spaced  ')
+      guardrail = ->(out) { [true, out.strip] }
+      task = build_task(guardrail: guardrail)
+
+      expect(task.execute).to eq('spaced')
+    end
+
+    it 're-runs the agent when the guardrail rejects, then succeeds' do
+      responses = ['no price here', 'now it costs $5']
+      allow(agent).to receive(:execute_task) { responses.shift }
+      guardrail = ->(out) { [out.include?('$'), out.include?('$') ? out : 'needs a price'] }
+      task = build_task(guardrail: guardrail, guardrail_max_retries: 2)
+
+      expect(task.execute).to eq('now it costs $5')
+    end
+
+    it 'raises after exhausting guardrail retries' do
+      allow(agent).to receive(:execute_task).and_return('never has a price')
+      guardrail = ->(_out) { [false, 'needs a price'] }
+      task = build_task(guardrail: guardrail, guardrail_max_retries: 1, max_retries: 0)
+
+      expect { task.execute }.to raise_error(RCrewAI::TaskExecutionError)
+    end
+  end
+
+  describe 'output_file and markdown' do
+    let(:tmpdir) { File.join(Dir.tmpdir, "rcrewai-test-#{rand(1_000_000)}") }
+
+    after { FileUtils.rm_rf(tmpdir) }
+
+    it 'writes the result to the given path' do
+      allow(agent).to receive(:execute_task).and_return('report body')
+      path = File.join(tmpdir, 'out.txt')
+      task = build_task(output_file: path)
+
+      task.execute
+
+      expect(File.read(path)).to eq('report body')
+    end
+
+    it 'creates missing parent directories by default' do
+      allow(agent).to receive(:execute_task).and_return('deep')
+      path = File.join(tmpdir, 'a', 'b', 'out.txt')
+      task = build_task(output_file: path)
+
+      task.execute
+
+      expect(File.read(path)).to eq('deep')
+    end
+
+    it 'raises when the directory is missing and create_directory is false' do
+      allow(agent).to receive(:execute_task).and_return('x')
+      path = File.join(tmpdir, 'missing', 'out.txt')
+      task = build_task(output_file: path, create_directory: false, max_retries: 0)
+
+      expect { task.execute }.to raise_error(RCrewAI::TaskExecutionError)
+    end
+
+    it 'prepends a markdown heading when markdown is enabled' do
+      allow(agent).to receive(:execute_task).and_return('body text')
+      path = File.join(tmpdir, 'out.md')
+      task = build_task(output_file: path, markdown: true)
+
+      task.execute
+
+      expect(File.read(path)).to start_with('# t')
     end
   end
 end

@@ -344,3 +344,62 @@ RSpec.describe RCrewAI::Agent do
     end
   end
 end
+
+RSpec.describe RCrewAI::Agent do
+  describe 'per-agent llm override' do
+    before do
+      configure_test_llm(provider: :openai, model: 'gpt-4')
+    end
+
+    it 'defaults to the global provider when llm is omitted' do
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g')
+
+      expect(agent.llm_client).to be_a(RCrewAI::LLMClients::OpenAI)
+    end
+
+    it 'accepts a provider symbol' do
+      RCrewAI.configuration.anthropic_api_key = 'test-key'
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g', llm: :anthropic)
+
+      expect(agent.llm_client).to be_a(RCrewAI::LLMClients::Anthropic)
+    end
+
+    it 'accepts a provider + model hash' do
+      RCrewAI.configuration.anthropic_api_key = 'test-key'
+      agent = described_class.new(
+        name: 'a', role: 'r', goal: 'g',
+        llm: { provider: :anthropic, model: 'claude-3-opus-20240229' }
+      )
+
+      expect(agent.llm_client).to be_a(RCrewAI::LLMClients::Anthropic)
+      expect(agent.llm_client.config.model).to eq('claude-3-opus-20240229')
+    end
+
+    it 'does not mutate the global configuration' do
+      RCrewAI.configuration.anthropic_api_key = 'test-key'
+      described_class.new(name: 'a', role: 'r', goal: 'g', llm: :anthropic)
+
+      expect(RCrewAI.configuration.llm_provider).to eq(:openai)
+    end
+
+    it 'accepts a pre-built client instance' do
+      custom = instance_double(RCrewAI::LLMClients::Base, chat: nil)
+      agent = described_class.new(name: 'a', role: 'r', goal: 'g', llm: custom)
+
+      expect(agent.llm_client).to eq(custom)
+    end
+
+    it 'lets agents in the same crew use different models' do
+      RCrewAI.configuration.anthropic_api_key = 'test-key'
+      worker  = described_class.new(name: 'w', role: 'r', goal: 'g',
+                                    llm: { provider: :openai, model: 'gpt-4o-mini' })
+      manager = described_class.new(name: 'm', role: 'r', goal: 'g',
+                                    llm: { provider: :anthropic, model: 'claude-3-opus-20240229' })
+
+      expect(worker.llm_client).to be_a(RCrewAI::LLMClients::OpenAI)
+      expect(worker.llm_client.config.model).to eq('gpt-4o-mini')
+      expect(manager.llm_client).to be_a(RCrewAI::LLMClients::Anthropic)
+      expect(manager.llm_client.config.model).to eq('claude-3-opus-20240229')
+    end
+  end
+end

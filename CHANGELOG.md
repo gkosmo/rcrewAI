@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-03
+
+This release closes the feature-parity gap with the modern CrewAI framework,
+adding its second pillar (**Flows**) alongside **Knowledge (RAG)**, structured
+output, guardrails, planning, and training/testing. See `ROADMAP.md`.
+
+### Added
+
+#### Flows (#11)
+- `RCrewAI::Flow` — an event-driven workflow engine (CrewAI's second pillar). Subclass it and declare methods with a class-level DSL: `start`, `listen`, `router`, and the `and_` / `or_` trigger combinators. `kickoff` runs the graph to a fixed point; routers emit labels that listeners trigger on.
+- Flow state (`Flow::State`) is a schemaless object with an automatic UUID, seedable via `kickoff(inputs:)`.
+- Flow persistence: pluggable state stores (`Flow::MemoryStateStore`, `Flow::FileStateStore`, or any `#save`/`#load` object); `flow.restore(id)` resumes a persisted run.
+- Flows can invoke a `Crew` as a step and pause for input via `#human_feedback`.
+
+#### Knowledge / RAG (#9)
+- `RCrewAI::Knowledge` module adds retrieval-augmented context. Sources (`StringSource`, `FileSource`, `PdfSource`, `CsvSource`, `UrlSource`) are chunked, embedded, and stored in an in-memory cosine-similarity vector store (no external DB required).
+- Attach via `Agent.new(knowledge:)` / `knowledge_sources:` (role-specific) or `Crew.new(knowledge:)` / `knowledge_sources:` (shared with all agents); relevant chunks are injected into each task's prompt at execution.
+- The embedder (`Knowledge::Embedder`, default OpenAI `text-embedding-3-small`) and vector store are pluggable.
+
+#### Task output processing (#6, #7, #8)
+- Structured output: `Task.new(output_schema:)` validates and coerces the agent's output against a JSON-schema subset, exposing the parsed object via `Task#structured_output` (and the raw string via `Task#raw_result`). JSON embedded in surrounding prose or a fenced code block is extracted automatically; output that doesn't conform re-runs the agent with the error fed back.
+- Guardrails: `Task.new(guardrail:)` takes a callable returning `[ok, value_or_error]` to validate and transform output before it flows downstream, retrying up to `guardrail_max_retries` (default 3) with the rejection reason fed back to the agent.
+- Output persistence & formatting: `Task.new(output_file:)` writes the result to disk (`create_directory:` controls parent-dir creation, default true), and `markdown: true` prepends a heading when the output isn't already a markdown document.
+- `RCrewAI::OutputSchema` — a small JSON-schema-subset validator/coercer used by structured task output.
+
+#### Per-agent LLM (#5)
+- `Agent.new(llm:)` accepts a provider symbol (`:anthropic`), an options hash (`{ provider:, model:, api_key:, temperature: }`), or a pre-built client instance. Agents in the same crew can use different providers/models (e.g. a cheap worker model and a stronger manager model). Omitting `llm:` keeps the previous global-configuration behavior.
+- `Configuration#with_overrides` returns a copy of the configuration with per-agent overrides applied, leaving global state untouched.
+
+#### Planning (#10)
+- `Crew.new(planning: true)` runs a single planner pass before execution that asks an LLM to draft a short plan for each task and folds it into the task's description. Optional `planning_llm:` selects the planner client (defaults to the global provider). Best-effort — a planner error or unparseable output leaves tasks unchanged and execution proceeds.
+- `Task#enrich_description` appends supplementary guidance (used by the planner) without discarding the original instructions.
+
+#### Training & testing (#12)
+- `Crew#train(n_iterations:, filename:)` runs the crew repeatedly, collects feedback after each iteration (via a `feedback:` callable, defaulting to a human prompt), and persists it as JSON.
+- `Crew#test(n_iterations:)` runs the crew repeatedly and reports per-run and average scores (via a `scorer:` callable, defaulting to the run's success rate).
+
 ## [0.3.0] - 2026-05-12
 
 ### Added
@@ -128,5 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI usage documentation
 - Real-world use cases and examples
 
-[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/gkosmo/rcrewAI/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/gkosmo/rcrewAI/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/gkosmo/rcrewAI/releases/tag/v0.1.0

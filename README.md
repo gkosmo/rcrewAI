@@ -19,6 +19,8 @@ RCrewAI is a Ruby implementation of the CrewAI framework, allowing you to create
 - **🏗️ Hierarchical Teams**: Manager agents that coordinate and delegate tasks to specialist agents
 - **🔒 Production Ready**: Security controls, error handling, logging, monitoring, and sandboxing
 - **🎯 Flexible Orchestration**: Sequential, hierarchical, and concurrent execution modes
+- **🌊 Flows**: Event-driven workflows with `start`/`listen`/`router`, branching, and persistent state
+- **📚 Knowledge (RAG)**: Ground agents in your own documents with built-in retrieval
 - **💎 Ruby-First Design**: Built specifically for Ruby developers with idiomatic patterns
 
 ## 📦 Installation
@@ -168,6 +170,172 @@ RCrewAI.configure do |config|
   config.model = 'llama2'
 end
 ```
+
+### Per-agent LLM
+
+The `RCrewAI.configure` block sets the crew-wide default. Any agent can override
+it with the `llm:` option, so a single crew can mix providers and models — for
+example a cheap model for workers and a stronger one for the manager:
+
+```ruby
+# Provider only (uses that provider's configured model + key)
+researcher = RCrewAI::Agent.new(name: 'researcher', role: '...', goal: '...',
+                                llm: :anthropic)
+
+# Provider + model (and optionally api_key / temperature)
+manager = RCrewAI::Agent.new(name: 'manager', role: '...', goal: '...',
+                             llm: { provider: :anthropic, model: 'claude-3-opus-20240229' })
+
+worker = RCrewAI::Agent.new(name: 'worker', role: '...', goal: '...',
+                            llm: { provider: :openai, model: 'gpt-4o-mini' })
+
+# Or pass a pre-built client instance
+worker = RCrewAI::Agent.new(name: 'worker', role: '...', goal: '...',
+                            llm: my_client)
+```
+
+Omit `llm:` to use the global `RCrewAI.configure` settings. Overrides never
+mutate the global configuration.
+
+## 📤 Structured Output, Guardrails & File Output
+
+Tasks can validate, transform, and persist their output:
+
+```ruby
+task = RCrewAI::Task.new(
+  name: 'extract',
+  description: 'Extract the article title and word count as JSON',
+  agent: analyst,
+
+  # Structured output — validated & coerced against a JSON schema.
+  # Non-conforming output re-runs the agent with the error fed back.
+  output_schema: {
+    type: 'object',
+    properties: { title: { type: 'string' }, words: { type: 'integer' } },
+    required: ['title']
+  },
+
+  # Guardrail — ->(output) { [ok, value_or_error] }. On rejection the agent
+  # re-runs (up to guardrail_max_retries) with the reason appended.
+  guardrail: ->(out) { [out.length < 5000, 'must be under 5000 chars'] },
+  guardrail_max_retries: 3,
+
+  # Persist the result. Parent dirs are created unless create_directory: false.
+  output_file: 'out/report.md',
+  markdown: true
+)
+
+task.execute
+task.structured_output  # => { "title" => "...", "words" => 1234 }
+task.raw_result         # => the unprocessed string the agent produced
+```
+
+## 🗺️ Planning
+
+Enable `planning:` on a crew to run a planner pass before execution. The planner
+drafts a short plan for each task and folds it into the task description, giving
+the executing agent a head start:
+
+```ruby
+crew = RCrewAI::Crew.new('research_crew', planning: true)
+# Optionally use a dedicated (e.g. stronger) planner model:
+crew = RCrewAI::Crew.new('research_crew', planning: true,
+                         planning_llm: { provider: :anthropic, model: 'claude-3-opus-20240229' })
+```
+
+Planning is best-effort: if the planner errors or returns unparseable output,
+the crew runs with the original tasks unchanged.
+
+## 🏋️ Training & Testing
+
+Iterate on a crew by training it with feedback or scoring repeated runs:
+
+```ruby
+# Train: run N times, collect feedback after each run, persist to JSON.
+crew.train(n_iterations: 3, filename: 'training.json')
+
+# Provide feedback programmatically instead of prompting a human:
+crew.train(n_iterations: 3, filename: 'training.json',
+           feedback: ->(iteration, result) { "run #{iteration}: #{result[:success_rate]}%" })
+
+# Test: run N times and score each run (defaults to success_rate).
+crew.test(n_iterations: 5)
+# => { iterations: 5, scores: [...], average_score: 92.0 }
+```
+
+## 📚 Knowledge (RAG)
+
+Ground agents in your own documents. Sources are chunked, embedded, and stored
+in an in-memory vector store; the most relevant chunks are injected into each
+task's prompt automatically.
+
+```ruby
+kb = RCrewAI::Knowledge::Base.new(sources: [
+  RCrewAI::Knowledge::StringSource.new('Our refund window is 30 days.'),
+  RCrewAI::Knowledge::FileSource.new('docs/policy.txt'),
+  RCrewAI::Knowledge::PdfSource.new('handbook.pdf'),
+  RCrewAI::Knowledge::UrlSource.new('https://example.com/faq')
+])
+
+# Agent-level (role-specific) knowledge:
+support = RCrewAI::Agent.new(name: 'support', role: '...', goal: '...', knowledge: kb)
+
+# Or pass raw sources and let the agent build the base:
+support = RCrewAI::Agent.new(name: 'support', role: '...', goal: '...',
+                             knowledge_sources: [RCrewAI::Knowledge::StringSource.new('...')])
+
+# Crew-level knowledge is shared with every agent:
+crew = RCrewAI::Crew.new('support_crew', knowledge: kb)
+```
+
+Embeddings default to OpenAI's `text-embedding-3-small`; pass a custom
+`embedder:` (anything responding to `embed(texts)`) or vector store to swap the
+backend.
+
+## 🌊 Flows
+
+Beyond crews, RCrewAI has **Flows** — an event-driven workflow engine for
+orchestrating steps (and whole crews) with explicit branching and state:
+
+```ruby
+class ArticleFlow < RCrewAI::Flow
+  start :outline
+  def outline
+    state.sections = %w[intro body conclusion]
+    state.sections.length
+  end
+
+  listen :outline
+  def draft(section_count)
+    state.words = section_count * 100
+    state.words
+  end
+
+  router :draft
+  def review(words)
+    words >= 250 ? :publish : :expand
+  end
+
+  listen :publish
+  def publish = state.status = 'published'
+
+  listen :expand
+  def expand = state.status = 'needs more work'
+end
+
+flow = ArticleFlow.new
+flow.kickoff(inputs: { author: 'me' })
+flow.state.status      # => "published"
+flow.state.id          # => automatic UUID
+```
+
+- `start` / `listen` / `router` wire methods into a graph; a listener receives
+  its trigger's return value.
+- Combine triggers with `and_(:a, :b)` (all) and `or_(:a, :b)` (any).
+- **State** is a schemaless object with a UUID, seedable via `kickoff(inputs:)`.
+- **Persistence**: pass `state_store:` (`RCrewAI::Flow::FileStateStore.new(dir)`
+  or your own `#save`/`#load`) and call `flow.restore(id)` to resume.
+- Invoke a `Crew` inside any step, or pause with `human_feedback('Approve?')`.
 
 ## 💡 Examples
 

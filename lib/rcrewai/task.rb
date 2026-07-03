@@ -2,12 +2,14 @@
 
 require_relative 'async_executor'
 require_relative 'human_input'
+require_relative 'output_schema'
 
 module RCrewAI
   class Task
     include AsyncExtensions
     include HumanInteractionExtensions
-    attr_reader :name, :description, :agent, :context, :expected_output, :tools, :async
+    attr_reader :name, :description, :agent, :context, :expected_output, :tools, :async,
+                :raw_result, :structured_output
     attr_accessor :result, :status, :start_time, :end_time, :execution_time
 
     def initialize(name:, description:, agent: nil, **options)
@@ -19,6 +21,16 @@ module RCrewAI
       @tools = options[:tools] || []      # Additional tools for this specific task
       @async = options[:async] || false   # Whether task can run asynchronously
       @callback = options[:callback]      # Callback function after completion
+
+      # Output processing (0.4.0)
+      @output_schema = options[:output_schema]            # JSON-schema for structured output
+      @guardrail = options[:guardrail]                    # ->(output) { [ok, value_or_error] }
+      @guardrail_max_retries = options.fetch(:guardrail_max_retries, 3)
+      @output_file = options[:output_file]                # Path to write result to
+      @create_directory = options.fetch(:create_directory, true)
+      @markdown = options.fetch(:markdown, false)
+      @raw_result = nil                                   # Unprocessed string content
+      @structured_output = nil                            # Parsed object when output_schema set
 
       # Human interaction options
       @human_input_enabled = options[:human_input] || false
@@ -62,7 +74,7 @@ module RCrewAI
             )
           end
 
-          @result = agent.execute_task(self)
+          @result = run_agent_with_output_processing
 
           # Post-execution human review if configured
           if @human_input_enabled && @human_review_points.include?(:completion)
@@ -166,6 +178,12 @@ module RCrewAI
       @context << task unless @context.include?(task)
     end
 
+    # Appends supplementary guidance (e.g. a planning step) to the task's
+    # description without discarding the original instructions.
+    def enrich_description(text)
+      @description = "#{@description}\n\n#{text}"
+    end
+
     def add_tool(tool)
       @tools << tool unless @tools.include?(tool)
     end
@@ -189,6 +207,74 @@ module RCrewAI
     end
 
     private
+
+    # Runs the agent, then applies guardrail validation and schema coercion.
+    # Guardrail/schema failures re-run the agent (up to @guardrail_max_retries)
+    # with the failure fed back in, rather than raising immediately.
+    def run_agent_with_output_processing
+      attempts = 0
+      feedback = nil
+
+      loop do
+        attempts += 1
+        raw = extract_content(agent.execute_task(self))
+        @raw_result = raw
+
+        begin
+          apply_guardrail!(raw)
+          @structured_output = OutputSchema.coerce(raw, @output_schema) if @output_schema
+        rescue OutputProcessingError, OutputSchemaError => e
+          if attempts <= @guardrail_max_retries
+            feedback = e.message
+            append_feedback_to_description(feedback)
+            next
+          end
+          raise
+        end
+
+        write_output_file(guardrail_value_or(raw)) if @output_file
+        return guardrail_value_or(raw)
+      end
+    end
+
+    # Accepts either the legacy plain-string return or the 0.3.0 result hash.
+    def extract_content(agent_result)
+      return agent_result[:content].to_s if agent_result.is_a?(Hash)
+
+      agent_result.to_s
+    end
+
+    def apply_guardrail!(raw)
+      return unless @guardrail
+
+      ok, value = @guardrail.call(raw)
+      raise OutputProcessingError, "guardrail rejected output: #{value}" unless ok
+
+      @guardrail_value = value
+    end
+
+    def guardrail_value_or(raw)
+      @guardrail ? @guardrail_value : raw
+    end
+
+    def append_feedback_to_description(feedback)
+      @description = "#{@description}\n\n[Retry] Previous attempt was rejected: #{feedback}. " \
+                     'Please correct the output.'
+    end
+
+    def write_output_file(content)
+      dir = File.dirname(@output_file)
+      if @create_directory
+        require 'fileutils'
+        FileUtils.mkdir_p(dir)
+      elsif !Dir.exist?(dir)
+        raise OutputProcessingError, "output directory does not exist: #{dir}"
+      end
+
+      body = content.to_s
+      body = "# #{name}\n\n#{body}" if @markdown && !body.lstrip.start_with?('#')
+      File.write(@output_file, body)
+    end
 
     def confirm_task_execution
       message = "Confirm execution of task: #{name}"
@@ -365,4 +451,5 @@ module RCrewAI
 
   class TaskExecutionError < Error; end
   class TaskDependencyError < TaskExecutionError; end
+  class OutputProcessingError < TaskExecutionError; end
 end

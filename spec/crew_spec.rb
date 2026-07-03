@@ -391,3 +391,72 @@ RSpec.describe RCrewAI::Crew do
     end
   end
 end
+
+RSpec.describe RCrewAI::Crew do
+  let(:agent1) { create_test_agent(name: 'agent1') }
+  let(:task1)  { create_test_task(name: 'task1', agent: agent1) }
+  let(:task2)  { create_test_task(name: 'task2', agent: agent1) }
+
+  describe 'planning' do
+    it 'defaults planning to off' do
+      crew = described_class.new('c')
+
+      expect(crew.planning?).to be false
+    end
+
+    it 'accepts planning: true' do
+      crew = described_class.new('c', planning: true)
+
+      expect(crew.planning?).to be true
+    end
+
+    it 'runs a planner pass before execution and enriches each task' do
+      planner = instance_double(RCrewAI::LLMClients::Base)
+      allow(planner).to receive(:chat).and_return(
+        { content: '{"task1": "gather sources", "task2": "write summary"}' }
+      )
+
+      crew = described_class.new('c', planning: true, planning_llm: planner)
+      crew.add_agent(agent1)
+      crew.add_task(task1)
+      crew.add_task(task2)
+
+      allow_any_instance_of(RCrewAI::Process::Sequential)
+        .to receive(:execute).and_return([])
+
+      crew.execute
+
+      expect(planner).to have_received(:chat).once
+      expect(task1.description).to include('gather sources')
+      expect(task2.description).to include('write summary')
+    end
+
+    it 'still runs (without raising) when the planner returns unparseable output' do
+      planner = instance_double(RCrewAI::LLMClients::Base)
+      allow(planner).to receive(:chat).and_return({ content: 'not json' })
+
+      crew = described_class.new('c', planning: true, planning_llm: planner)
+      crew.add_agent(agent1)
+      crew.add_task(task1)
+
+      allow_any_instance_of(RCrewAI::Process::Sequential)
+        .to receive(:execute).and_return([])
+
+      expect { crew.execute }.not_to raise_error
+    end
+
+    it 'does not call a planner when planning is off' do
+      planner = instance_double(RCrewAI::LLMClients::Base, chat: { content: '{}' })
+      crew = described_class.new('c', planning_llm: planner)
+      crew.add_agent(agent1)
+      crew.add_task(task1)
+
+      allow_any_instance_of(RCrewAI::Process::Sequential)
+        .to receive(:execute).and_return([])
+
+      crew.execute
+
+      expect(planner).not_to have_received(:chat)
+    end
+  end
+end

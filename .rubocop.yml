@@ -1,1 +1,21 @@
 inherit_from: .rubocop_todo.yml
+
+Naming/MethodParameterName:
+  # `k` (top-k retrieval) and short math vars for vector similarity are
+  # conventional and clearer than forced longer names. The rest are RuboCop's
+  # defaults, restated because AllowedNames replaces rather than extends.
+  AllowedNames:
+    - k
+    - a
+    - b
+    - io
+    - id
+    - to
+    - by
+    - 'on'
+    - in
+    - at
+    - ip
+    - db
+    - os
+    - pp

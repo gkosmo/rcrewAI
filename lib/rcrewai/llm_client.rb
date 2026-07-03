@@ -28,6 +28,29 @@ module RCrewAI
       end
     end
 
+    # Resolves a per-agent / per-pass LLM spec into a client.
+    #   nil            -> global provider
+    #   Symbol/String  -> that provider, global model
+    #   Hash           -> { provider:, model:, api_key:, temperature: } overrides
+    #   client object  -> returned as-is (anything responding to #chat)
+    def self.resolve(spec, config = RCrewAI.configuration)
+      case spec
+      when nil
+        for_provider(nil, config)
+      when Symbol, String
+        overridden = config.with_overrides(provider: spec)
+        for_provider(overridden.llm_provider, overridden)
+      when Hash
+        overridden = config.with_overrides(**spec)
+        for_provider(overridden.llm_provider, overridden)
+      else
+        return spec if spec.respond_to?(:chat)
+
+        raise ConfigurationError,
+              "Invalid llm: expected a provider symbol, an options hash, or a client responding to #chat, got #{spec.class}"
+      end
+    end
+
     def self.chat(messages:, **options)
       client = for_provider
       client.chat(messages: messages, **options)

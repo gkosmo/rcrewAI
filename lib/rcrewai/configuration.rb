@@ -59,6 +59,26 @@ module RCrewAI
       end
     end
 
+    # Returns a copy of this configuration with the given per-agent overrides
+    # applied. The original configuration is left untouched, so agents can each
+    # target a different provider/model without mutating global state.
+    #
+    #   config.with_overrides(provider: :anthropic, model: 'claude-3-opus-20240229')
+    def with_overrides(provider: nil, model: nil, api_key: nil, temperature: nil)
+      copy = dup
+      copy.llm_provider = provider.to_sym if provider
+      target = copy.llm_provider
+
+      copy.public_send("#{target}_model=", model) if model && copy.respond_to?("#{target}_model=")
+      copy.model = model if model
+
+      copy.public_send("#{target}_api_key=", api_key) if api_key && copy.respond_to?("#{target}_api_key=")
+      copy.api_key = api_key if api_key
+
+      copy.temperature = temperature unless temperature.nil?
+      copy
+    end
+
     def validate!
       raise ConfigurationError, 'LLM provider must be set' if @llm_provider.nil?
       raise ConfigurationError, "API key must be set for #{@llm_provider}" if api_key.nil? || api_key.empty?
