@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Per-agent LLM override: `Agent.new(llm:)` accepts a provider symbol (`:anthropic`), an options hash (`{ provider:, model:, api_key:, temperature: }`), or a pre-built client instance. Agents in the same crew can now use different providers/models (e.g. a cheap worker model and a stronger manager model). Omitting `llm:` keeps the previous behavior of using the global configuration. (#5)
 - `Configuration#with_overrides` returns a copy of the configuration with per-agent overrides applied, leaving global state untouched.
+- Structured task output: `Task.new(output_schema:)` validates and coerces the agent's output against a JSON-schema subset, exposing the parsed object via `Task#structured_output` (and the raw string via `Task#raw_result`). JSON embedded in surrounding prose or a fenced code block is extracted automatically; output that doesn't conform re-runs the agent with the error fed back. (#6)
+- Task guardrails: `Task.new(guardrail:)` takes a callable returning `[ok, value_or_error]` to validate and transform output before it flows downstream, retrying up to `guardrail_max_retries` (default 3) with the rejection reason fed back to the agent. (#7)
+- Task output persistence & formatting: `Task.new(output_file:)` writes the result to disk (`create_directory:` controls parent-dir creation, default true), and `markdown: true` prepends a heading when the output isn't already a markdown document. (#8)
+- `RCrewAI::OutputSchema` — a small JSON-schema-subset validator/coercer used by structured task output.
 
 ## [0.3.0] - 2026-05-12
 

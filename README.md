@@ -195,6 +195,39 @@ worker = RCrewAI::Agent.new(name: 'worker', role: '...', goal: '...',
 Omit `llm:` to use the global `RCrewAI.configure` settings. Overrides never
 mutate the global configuration.
 
+## 📤 Structured Output, Guardrails & File Output
+
+Tasks can validate, transform, and persist their output:
+
+```ruby
+task = RCrewAI::Task.new(
+  name: 'extract',
+  description: 'Extract the article title and word count as JSON',
+  agent: analyst,
+
+  # Structured output — validated & coerced against a JSON schema.
+  # Non-conforming output re-runs the agent with the error fed back.
+  output_schema: {
+    type: 'object',
+    properties: { title: { type: 'string' }, words: { type: 'integer' } },
+    required: ['title']
+  },
+
+  # Guardrail — ->(output) { [ok, value_or_error] }. On rejection the agent
+  # re-runs (up to guardrail_max_retries) with the reason appended.
+  guardrail: ->(out) { [out.length < 5000, 'must be under 5000 chars'] },
+  guardrail_max_retries: 3,
+
+  # Persist the result. Parent dirs are created unless create_directory: false.
+  output_file: 'out/report.md',
+  markdown: true
+)
+
+task.execute
+task.structured_output  # => { "title" => "...", "words" => 1234 }
+task.raw_result         # => the unprocessed string the agent produced
+```
+
 ## 💡 Examples
 
 ### Hierarchical Team with Human Oversight
