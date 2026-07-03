@@ -9,7 +9,7 @@ module RCrewAI
     include AsyncExtensions
     include HumanInteractionExtensions
     attr_reader :name, :description, :agent, :context, :expected_output, :tools, :async,
-                :raw_result, :structured_output
+                :raw_result, :structured_output, :attachments
     attr_accessor :result, :status, :start_time, :end_time, :execution_time
 
     def initialize(name:, description:, agent: nil, **options)
@@ -21,6 +21,7 @@ module RCrewAI
       @tools = options[:tools] || []      # Additional tools for this specific task
       @async = options[:async] || false   # Whether task can run asynchronously
       @callback = options[:callback]      # Callback function after completion
+      @attachments = options[:attachments] || [] # Multimodal inputs (images)
 
       # Output processing (0.4.0)
       @output_schema = options[:output_schema]            # JSON-schema for structured output

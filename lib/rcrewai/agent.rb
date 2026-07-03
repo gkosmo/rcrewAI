@@ -5,6 +5,7 @@ require_relative 'llm_client'
 require_relative 'memory'
 require_relative 'rate_limiter'
 require_relative 'agent_augmentations'
+require_relative 'multimodal'
 require_relative 'tools/base'
 require_relative 'tool_runner'
 require_relative 'legacy_react_runner'
@@ -266,8 +267,18 @@ module RCrewAI
 
       [
         { role: 'system', content: system },
-        { role: 'user', content: user }
+        { role: 'user', content: build_user_content(user, task) }
       ]
+    end
+
+    # Returns a plain string, or an OpenAI-style multimodal parts array when the
+    # task carries attachments (guarded to providers that support it).
+    def build_user_content(text, task)
+      attachments = task.respond_to?(:attachments) ? task.attachments : nil
+      return text if attachments.nil? || attachments.empty?
+
+      Multimodal.ensure_supported_provider!(RCrewAI.configuration.llm_provider)
+      Multimodal.content_parts(text, attachments)
     end
 
     # Retrieves knowledge chunks relevant to the task from the agent's own
