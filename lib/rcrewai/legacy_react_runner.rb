@@ -30,7 +30,7 @@ module RCrewAI
         iter += 1
         emit(Events::IterationStart, iteration: iter, iteration_index: iter)
 
-        response = @llm.chat(messages: msgs)
+        response = @llm.chat(messages: fit_context(msgs))
         accumulate_usage(total_usage, response[:usage])
         reasoning = response[:content] || ''
         last_reasoning = reasoning
@@ -59,6 +59,12 @@ module RCrewAI
     end
 
     private
+
+    # Trims the message list to the model's context window when the agent
+    # supports it; a no-op otherwise.
+    def fit_context(messages)
+      @agent.respond_to?(:fit_context) ? @agent.fit_context(messages) : messages
+    end
 
     def parse_and_execute_actions(reasoning, iter)
       results = []

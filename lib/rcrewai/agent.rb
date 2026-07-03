@@ -4,6 +4,7 @@ require 'logger'
 require_relative 'llm_client'
 require_relative 'memory'
 require_relative 'rate_limiter'
+require_relative 'agent_augmentations'
 require_relative 'tools/base'
 require_relative 'tool_runner'
 require_relative 'legacy_react_runner'
@@ -12,6 +13,7 @@ require_relative 'human_input'
 module RCrewAI
   class Agent
     include HumanInteractionExtensions
+    include AgentAugmentations
     attr_reader :name, :role, :goal, :backstory, :tools, :memory, :llm_client, :knowledge, :rate_limiter
     attr_accessor :verbose, :allow_delegation, :max_iterations, :max_execution_time, :manager
     # Set by the crew so agents see shared knowledge in addition to their own.
@@ -35,6 +37,7 @@ module RCrewAI
       @logger.level = verbose ? Logger::DEBUG : Logger::INFO
       @reasoning = options.fetch(:reasoning, false)
       @max_reasoning_attempts = options.fetch(:max_reasoning_attempts, 3)
+      @respect_context_window = options.fetch(:respect_context_window, false)
       @memory = Memory.new
       @rate_limiter = options[:max_rpm] ? RateLimiter.new(max_rpm: options[:max_rpm]) : nil
       @llm_client = wrap_with_rate_limiter(build_llm_client(options[:llm]))
@@ -76,10 +79,6 @@ module RCrewAI
         task.result = "Task failed: #{e.message}"
         raise AgentError, "Agent #{name} failed to execute task: #{e.message}"
       end
-    end
-
-    def reasoning?
-      @reasoning
     end
 
     def require_approval_for_tools?
@@ -300,35 +299,6 @@ module RCrewAI
     # Asks the LLM to think through an approach before answering. Retries up to
     # @max_reasoning_attempts if the model returns empty output; returns nil if
     # every attempt is empty (execution then proceeds without a plan).
-    def run_reasoning_pass(task)
-      prompt = <<~PROMPT
-        You are #{role}. Before answering, think step by step about how to best
-        accomplish this task. Produce a short, concrete plan (do not answer yet).
-
-        Task: #{task.description}
-        Expected Output: #{task.expected_output || 'not specified'}
-      PROMPT
-
-      @max_reasoning_attempts.times do
-        response = @llm_client.chat(messages: [{ role: 'user', content: prompt }])
-        text = (response.is_a?(Hash) ? response[:content] : response).to_s.strip
-        return text unless text.empty?
-      end
-      nil
-    rescue StandardError => e
-      @logger.warn("Reasoning pass failed: #{e.message}")
-      nil
-    end
-
-    # Adds the reasoning trace to the user message so the answer pass can use it.
-    def inject_reasoning(messages, reasoning)
-      messages.map do |msg|
-        next msg unless msg[:role] == 'user'
-
-        { role: 'user', content: "#{msg[:content]}\n\nYour plan:\n#{reasoning}" }
-      end
-    end
-
     def pick_runner_class
       schemas_ok = @tools.empty? || @tools.all? { |t| t.respond_to?(:json_schema) && t.json_schema }
       native = @llm_client.respond_to?(:supports_native_tools?) &&

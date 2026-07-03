@@ -27,7 +27,7 @@ module RCrewAI
         emit(Events::IterationStart, iteration: iter, iteration_index: iter)
 
         response = @llm.chat(
-          messages: msgs,
+          messages: fit_context(msgs),
           tools: @tools.map(&:json_schema),
           stream: ->(e) { @sink.call(retag(e, iter)) }
         )
@@ -79,6 +79,12 @@ module RCrewAI
     end
 
     private
+
+    # Trims the message list to the model's context window when the agent
+    # supports it; a no-op otherwise.
+    def fit_context(messages)
+      @agent.respond_to?(:fit_context) ? @agent.fit_context(messages) : messages
+    end
 
     def tool_result_message(call_id, content)
       { role: 'tool', tool_call_id: call_id, content: content }
