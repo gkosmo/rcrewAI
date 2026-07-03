@@ -31,7 +31,7 @@ module RCrewAI
       @logger = Logger.new($stdout)
       @logger.level = verbose ? Logger::DEBUG : Logger::INFO
       @memory = Memory.new
-      @llm_client = LLMClient.for_provider
+      @llm_client = build_llm_client(options[:llm])
       @subordinates = [] # For manager agents
     end
 
@@ -193,6 +193,29 @@ module RCrewAI
     end
 
     private
+
+    # Resolves the +llm:+ option into an LLM client.
+    #   nil            -> global provider (default)
+    #   Symbol/String  -> that provider, global model
+    #   Hash           -> { provider:, model:, api_key:, temperature: } overrides
+    #   client object  -> used as-is (anything responding to #chat)
+    def build_llm_client(llm)
+      case llm
+      when nil
+        LLMClient.for_provider
+      when Symbol, String
+        config = RCrewAI.configuration.with_overrides(provider: llm)
+        LLMClient.for_provider(config.llm_provider, config)
+      when Hash
+        config = RCrewAI.configuration.with_overrides(**llm)
+        LLMClient.for_provider(config.llm_provider, config)
+      else
+        return llm if llm.respond_to?(:chat)
+
+        raise ConfigurationError,
+              "Invalid llm: expected a provider symbol, an options hash, or a client responding to #chat, got #{llm.class}"
+      end
+    end
 
     def build_context(task)
       context = {

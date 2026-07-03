@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Per-agent LLM override: `Agent.new(llm:)` accepts a provider symbol (`:anthropic`), an options hash (`{ provider:, model:, api_key:, temperature: }`), or a pre-built client instance. Agents in the same crew can now use different providers/models (e.g. a cheap worker model and a stronger manager model). Omitting `llm:` keeps the previous behavior of using the global configuration. (#5)
+- `Configuration#with_overrides` returns a copy of the configuration with per-agent overrides applied, leaving global state untouched.
+
 ## [0.3.0] - 2026-05-12
 
 ### Added

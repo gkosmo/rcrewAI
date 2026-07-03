@@ -113,6 +113,55 @@ RSpec.describe RCrewAI::Configuration do
       expect(config.provider_supported?(:unknown)).to be false
     end
   end
+
+  describe '#with_overrides' do
+    let(:base) do
+      described_class.new.tap do |c|
+        c.llm_provider = :openai
+        c.openai_api_key = 'global-openai-key'
+        c.temperature = 0.1
+      end
+    end
+
+    it 'returns a new configuration, leaving the original untouched' do
+      overridden = base.with_overrides(provider: :anthropic)
+
+      expect(overridden).not_to equal(base)
+      expect(base.llm_provider).to eq(:openai)
+    end
+
+    it 'overrides the provider' do
+      overridden = base.with_overrides(provider: :anthropic)
+
+      expect(overridden.llm_provider).to eq(:anthropic)
+    end
+
+    it 'overrides the model for the selected provider' do
+      overridden = base.with_overrides(provider: :anthropic, model: 'claude-3-opus-20240229')
+
+      expect(overridden.model).to eq('claude-3-opus-20240229')
+    end
+
+    it 'overrides the api_key for the selected provider' do
+      overridden = base.with_overrides(provider: :anthropic, api_key: 'per-agent-key')
+
+      expect(overridden.api_key).to eq('per-agent-key')
+    end
+
+    it 'overrides temperature' do
+      overridden = base.with_overrides(temperature: 0.9)
+
+      expect(overridden.temperature).to eq(0.9)
+    end
+
+    it 'inherits unspecified values from the base config' do
+      overridden = base.with_overrides(model: 'gpt-4o')
+
+      expect(overridden.llm_provider).to eq(:openai)
+      expect(overridden.api_key).to eq('global-openai-key')
+      expect(overridden.temperature).to eq(0.1)
+    end
+  end
 end
 
 RSpec.describe RCrewAI do

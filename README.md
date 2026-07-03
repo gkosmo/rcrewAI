@@ -169,6 +169,32 @@ RCrewAI.configure do |config|
 end
 ```
 
+### Per-agent LLM
+
+The `RCrewAI.configure` block sets the crew-wide default. Any agent can override
+it with the `llm:` option, so a single crew can mix providers and models — for
+example a cheap model for workers and a stronger one for the manager:
+
+```ruby
+# Provider only (uses that provider's configured model + key)
+researcher = RCrewAI::Agent.new(name: 'researcher', role: '...', goal: '...',
+                                llm: :anthropic)
+
+# Provider + model (and optionally api_key / temperature)
+manager = RCrewAI::Agent.new(name: 'manager', role: '...', goal: '...',
+                             llm: { provider: :anthropic, model: 'claude-3-opus-20240229' })
+
+worker = RCrewAI::Agent.new(name: 'worker', role: '...', goal: '...',
+                            llm: { provider: :openai, model: 'gpt-4o-mini' })
+
+# Or pass a pre-built client instance
+worker = RCrewAI::Agent.new(name: 'worker', role: '...', goal: '...',
+                            llm: my_client)
+```
+
+Omit `llm:` to use the global `RCrewAI.configure` settings. Overrides never
+mutate the global configuration.
+
 ## 💡 Examples
 
 ### Hierarchical Team with Human Oversight
