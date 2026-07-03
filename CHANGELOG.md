@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crew lifecycle hooks: `Crew#before_kickoff` and `Crew#after_kickoff` register callbacks that run before/after execution. A `before_kickoff` hook receives the inputs hash (passed via `crew.execute(inputs:)`) and may transform it; an `after_kickoff` hook receives the result and may transform it. Multiple hooks run in registration order. The (possibly transformed) inputs are exposed on `Crew#last_inputs`. (#15)
 - `Crew#kickoff_for_each(inputs:)` runs the crew once per input set and returns one result per input, in order. Runs are isolated — each execution starts from only its own inputs. (#16)
 - Rate limiting: `Agent.new(max_rpm:)` throttles the agent's LLM calls to the given requests-per-minute using a thread-safe rolling-window `RCrewAI::RateLimiter`. The agent's client is transparently wrapped (`RateLimiter::ThrottledClient`) so every `chat` acquires a slot first; `max_rpm` nil/0 means unlimited. (#17)
+- Reasoning: `Agent.new(reasoning: true)` runs a reasoning/planning pass before answering — the LLM drafts a short plan for the task, which is injected into the answer prompt and surfaced on the result hash as `:reasoning` (without polluting `task.result`). Bounded by `max_reasoning_attempts` (default 3), retrying if the model returns empty output; if every attempt is empty, execution proceeds without a plan. Off by default. (#18)
 
 ## [0.4.0] - 2026-07-03
 
