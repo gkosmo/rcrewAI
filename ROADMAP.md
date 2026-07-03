@@ -19,8 +19,7 @@ Since CrewAI's `1.0`, the framework grew a second pillar (**Flows**) plus
 **Training/Testing**. RCrewAI now implements all of these — see the matrix below.
 
 **Status: complete.** All milestone issues (#5–#12) shipped in v0.4.0, and all
-backlog items (#15–#20) are done and merged to `main` (awaiting the next
-release). There is no outstanding roadmap work.
+backlog items (#15–#20) shipped in v0.5.0. There is no outstanding roadmap work.
 
 ## Parity matrix
 
