@@ -23,14 +23,31 @@ module RCrewAI
       @planning_llm = options[:planning_llm]
       @planned = false
       @knowledge = build_knowledge(options[:knowledge], options[:knowledge_sources])
+      @before_kickoff_hooks = []
+      @after_kickoff_hooks = []
+      @last_inputs = {}
       @process_instance = nil
       validate_process_type!
     end
 
-    attr_reader :knowledge, :stream_sink
+    attr_reader :knowledge, :stream_sink, :last_inputs
 
     def planning?
       @planning
+    end
+
+    # Register a callback run before execution. Receives the inputs hash and may
+    # return a transformed hash. Multiple hooks run in registration order.
+    def before_kickoff(&block)
+      @before_kickoff_hooks << block
+      self
+    end
+
+    # Register a callback run after execution. Receives the result and may
+    # return a transformed result. Multiple hooks run in registration order.
+    def after_kickoff(&block)
+      @after_kickoff_hooks << block
+      self
     end
 
     def add_agent(agent)
@@ -41,20 +58,25 @@ module RCrewAI
       @tasks << task
     end
 
-    def execute(async: false, stream: nil, **async_options, &block)
+    def execute(async: false, stream: nil, inputs: {}, **async_options, &block)
       sinks = []
       sinks << block if block_given?
       Array(stream).each { |s| sinks << s } if stream
       @stream_sink = sinks.empty? ? nil : RCrewAI::Events.fan_out(sinks)
 
+      run_before_hooks(inputs)
+
       distribute_knowledge if @knowledge
       run_planning_pass if planning?
 
-      if async
-        execute_async(**async_options)
-      else
-        execute_sync
-      end
+      result = async ? execute_async(**async_options) : execute_sync
+      run_after_hooks(result)
+    end
+
+    # Runs the crew once per input set, returning one result per input in order.
+    # Runs are isolated: each execution starts from only its own inputs.
+    def kickoff_for_each(inputs:)
+      Array(inputs).map { |input| execute(inputs: input) }
     end
 
     # Runs the crew repeatedly, collecting feedback after each iteration and
@@ -143,6 +165,22 @@ module RCrewAI
     end
 
     private
+
+    def run_before_hooks(inputs)
+      # Assign before running hooks so a hook that reads #last_inputs sees this
+      # run's own inputs; update it as each hook transforms them.
+      @last_inputs = inputs || {}
+      @before_kickoff_hooks.each do |hook|
+        @last_inputs = hook.call(@last_inputs) || @last_inputs
+      end
+      @last_inputs
+    end
+
+    def run_after_hooks(result)
+      @after_kickoff_hooks.reduce(result) do |acc, hook|
+        hook.call(acc) || acc
+      end
+    end
 
     def build_knowledge(knowledge, sources)
       return knowledge if knowledge

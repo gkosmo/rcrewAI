@@ -263,6 +263,24 @@ crew.test(n_iterations: 5)
 # => { iterations: 5, scores: [...], average_score: 92.0 }
 ```
 
+## 🪝 Kickoff Hooks & Batch Runs
+
+Run setup/teardown around a crew, and batch it over many inputs:
+
+```ruby
+crew.before_kickoff { |inputs| inputs.merge(started_at: Time.now) } # may transform inputs
+crew.after_kickoff  { |result| notify(result); result }            # may transform result
+
+crew.execute(inputs: { topic: 'ruby' })
+crew.last_inputs   # => the (possibly transformed) inputs the run used
+
+# Batch: run the crew once per input set, results returned in order.
+results = crew.kickoff_for_each(inputs: [
+  { topic: 'ruby' },
+  { topic: 'python' }
+])
+```
+
 ## 📚 Knowledge (RAG)
 
 Ground agents in your own documents. Sources are chunked, embedded, and stored
