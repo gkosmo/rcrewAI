@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-06
+
+Follow-ups to the 0.6.0 Cognitive Memory release, deepening the areas that
+shipped as focused first cuts. All additive and backward compatible.
+
 ### Added
 - Multi-provider embeddings: `Knowledge::Embedder.new(provider:)` now supports `:openai` (default), `:azure`, `:google`, and `:ollama` embedding endpoints, removing the hard OpenAI dependency for RAG and memory. `:anthropic` raises a clear error (no first-party embeddings API). Per-provider default models via `DEFAULT_MODELS`; existing OpenAI usage is unchanged.
 - LLM-backed entity extraction: `EntityMemory` accepts a pluggable `extractor:` (anything responding to `call(text) -> [names]`); `RCrewAI::Memory::LlmEntityExtractor` prompts an LLM for entities (handling multi-word names the capitalized-token heuristic misses). Falls back to the heuristic when the extractor is absent, returns nothing, or raises. Wire via `Agent.new(memory: { entity_extractor: ... })`.
@@ -203,7 +208,8 @@ output, guardrails, planning, and training/testing. See `ROADMAP.md`.
 - CLI usage documentation
 - Real-world use cases and examples
 
-[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/gkosmo/rcrewAI/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/gkosmo/rcrewAI/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/gkosmo/rcrewAI/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/gkosmo/rcrewAI/compare/v0.3.0...v0.4.0
