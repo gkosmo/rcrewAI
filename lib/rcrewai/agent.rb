@@ -228,7 +228,8 @@ module RCrewAI
       return memory if memory.is_a?(Memory)
 
       opts = memory.is_a?(Hash) ? memory : {}
-      Memory.new(scope: opts.fetch(:scope, name), **opts.slice(:embedder, :store, :short_term_limit))
+      Memory.new(scope: opts.fetch(:scope, name),
+                 **opts.slice(:embedder, :store, :short_term_limit, :entity_extractor))
     end
 
     # Accepts a pre-built Knowledge::Base via +knowledge:+ or an array of
