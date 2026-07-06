@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Multi-provider embeddings: `Knowledge::Embedder.new(provider:)` now supports `:openai` (default), `:azure`, `:google`, and `:ollama` embedding endpoints, removing the hard OpenAI dependency for RAG and memory. `:anthropic` raises a clear error (no first-party embeddings API). Per-provider default models via `DEFAULT_MODELS`; existing OpenAI usage is unchanged.
+
 ## [0.6.0] - 2026-07-06
 
 Replaces the placeholder agent memory with a **cognitive memory** system —
