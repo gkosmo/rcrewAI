@@ -13,7 +13,7 @@ RCrewAI is a Ruby implementation of the CrewAI framework, allowing you to create
 - **🤖 Intelligent Agents**: AI agents with reasoning loops, memory, and tool usage capabilities
 - **🔗 Multi-LLM Support**: OpenAI, Anthropic (Claude), Google (Gemini), Azure OpenAI, and Ollama
 - **🛠️ Rich Tool Ecosystem**: Web search, file operations, SQL, email, code execution, PDF processing, and custom tools
-- **🧠 Agent Memory**: Short-term and long-term memory for learning from past executions
+- **🧠 Cognitive Memory**: Semantic recall (embeddings + cosine) with optional SQLite persistence and short-term/long-term/entity/tool memory types
 - **🤝 Human-in-the-Loop**: Interactive approval workflows, human guidance, and collaborative decision making
 - **⚡ Advanced Task System**: Dependencies, retries, async/concurrent execution, and context sharing
 - **🏗️ Hierarchical Teams**: Manager agents that coordinate and delegate tasks to specialist agents
@@ -373,6 +373,31 @@ crew = RCrewAI::Crew.new('support_crew', knowledge: kb)
 Embeddings default to OpenAI's `text-embedding-3-small`; pass a custom
 `embedder:` (anything responding to `embed(texts)`) or vector store to swap the
 backend.
+
+## 🧠 Cognitive Memory
+
+Agents remember what they've done and recall it semantically on future tasks.
+Memory is zero-config by default (in-memory, lexical recall); add an embedder
+for semantic recall and a SQLite store for persistence:
+
+```ruby
+embedder = RCrewAI::Knowledge::Embedder.new
+store    = RCrewAI::Memory::SqliteStore.new(path: '~/.rcrewai/memory.db')
+
+agent = RCrewAI::Agent.new(
+  name: 'engineer', role: '...', goal: '...',
+  memory: { embedder: embedder, store: store }   # both optional
+)
+```
+
+- **Semantic recall** — with an embedder, an agent recalls conceptually related
+  past work even when the wording differs (falls back to word-overlap without one).
+- **Persistence** — a `SqliteStore` makes memory survive restarts.
+- **Memory types** — `agent.memory.short_term` / `long_term` / `entity` / `tool`.
+- **Scoping** — memory is scoped per agent so a shared store doesn't cross-read.
+
+Memory is best-effort: embedding failures fall back to lexical similarity, so it
+never breaks agent execution.
 
 ## 🌊 Flows
 

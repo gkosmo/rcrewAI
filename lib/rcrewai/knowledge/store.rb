@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative '../similarity'
+
 module RCrewAI
   module Knowledge
     # In-memory vector store with cosine-similarity search. The default backing
@@ -38,20 +40,8 @@ module RCrewAI
 
       private
 
-      def cosine_similarity(a, b)
-        dot = 0.0
-        norm_a = 0.0
-        norm_b = 0.0
-        a.each_index do |i|
-          ai = a[i].to_f
-          bi = (b[i] || 0).to_f
-          dot += ai * bi
-          norm_a += ai * ai
-          norm_b += bi * bi
-        end
-        return 0.0 if norm_a.zero? || norm_b.zero?
-
-        dot / (Math.sqrt(norm_a) * Math.sqrt(norm_b))
+      def cosine_similarity(vec_a, vec_b)
+        Similarity.cosine(vec_a, vec_b)
       end
     end
   end

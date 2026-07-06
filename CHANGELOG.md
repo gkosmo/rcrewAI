@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Cognitive memory: `RCrewAI::Memory` is now a semantic, optionally-persistent, multi-type memory system, replacing the previous word-overlap placeholder. It composes four memory types — `ShortTermMemory` (recent executions, capped), `LongTermMemory` (durable, deduped insights), `EntityMemory` (facts about entities seen in work), and `ToolMemory` (tool-call history) — behind the original `Memory` public API.
+- Semantic recall: pass `Agent.new(memory: { embedder: RCrewAI::Knowledge::Embedder.new })` to recall conceptually related past work via embeddings + cosine similarity. Without an embedder, recall falls back to lexical (word-overlap) similarity — and embedding failures fall back gracefully, so memory never breaks execution.
+- Persistent memory: `RCrewAI::Memory::SqliteStore` persists memories to SQLite (vectors packed as floats, metadata as JSON) so recall survives restarts. Default store is `InMemoryStore` (volatile). The store interface is pluggable.
+- Memory scoping: each agent's memory is scoped to its name by default, so agents sharing a persistent store don't cross-read; override via `memory: { scope: ... }`.
+- `RCrewAI::Similarity` — shared cosine + lexical similarity helpers (extracted from `Knowledge::Store`, now used by both Knowledge and Memory).
+- `sqlite3` added as a runtime dependency (required lazily; only needed for `SqliteStore`).
+
+### Changed
+- `Agent.new(memory:)` accepts a pre-built `Memory`, an options hash (`{ embedder:, store:, scope:, short_term_limit: }`), or nothing (zero-config default, unchanged behavior).
+
 ## [0.5.0] - 2026-07-03
 
 Polish release completing the roadmap backlog: crew lifecycle hooks, batch
