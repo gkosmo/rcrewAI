@@ -370,9 +370,10 @@ support = RCrewAI::Agent.new(name: 'support', role: '...', goal: '...',
 crew = RCrewAI::Crew.new('support_crew', knowledge: kb)
 ```
 
-Embeddings default to OpenAI's `text-embedding-3-small`; pass a custom
-`embedder:` (anything responding to `embed(texts)`) or vector store to swap the
-backend.
+Embeddings default to OpenAI's `text-embedding-3-small`. Use another provider
+with `RCrewAI::Knowledge::Embedder.new(provider: :ollama)` (also `:azure`,
+`:google`; `:anthropic` has no embeddings API), or pass any custom `embedder:`
+(anything responding to `embed(texts)`) / vector store to swap the backend.
 
 ## 🧠 Cognitive Memory
 

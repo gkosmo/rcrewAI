@@ -97,6 +97,43 @@ RSpec.describe RCrewAI::Memory::EntityMemory do
     facts = mem.recall('who works on payments', limit: 2)
     expect(facts.join).to include('Alice')
   end
+
+  it 'uses a custom extractor when provided' do
+    # A pluggable extractor: anything responding to call(text) -> [names].
+    extractor = ->(text) { text.scan(/@(\w+)/).flatten } # extract @mentions
+    mem = described_class.new(scope: 'agentX', embedder: nil, extractor: extractor)
+
+    mem.observe('ping @alice and @bob about the deploy')
+
+    expect(mem.entities).to contain_exactly('alice', 'bob')
+  end
+
+  it 'falls back to heuristic extraction when a custom extractor raises' do
+    boom = ->(_text) { raise 'extractor down' }
+    mem = described_class.new(scope: 'agentX', embedder: nil, extractor: boom)
+
+    mem.observe('Charlie shipped the Widget service')
+
+    # heuristic (capitalized tokens) still works
+    expect(mem.entities).to include('Charlie', 'Widget')
+  end
+end
+
+RSpec.describe RCrewAI::Memory::LlmEntityExtractor do
+  it 'prompts the LLM and parses a JSON array of entities' do
+    llm = instance_double(RCrewAI::LLMClients::Base)
+    allow(llm).to receive(:chat).and_return({ content: '["Alice", "Payments", "Redis"]' })
+
+    extractor = described_class.new(llm)
+    expect(extractor.call('Alice on Payments uses Redis')).to eq(%w[Alice Payments Redis])
+  end
+
+  it 'returns [] when the LLM output is not parseable (caller falls back)' do
+    llm = instance_double(RCrewAI::LLMClients::Base)
+    allow(llm).to receive(:chat).and_return({ content: 'sorry, not sure' })
+
+    expect(described_class.new(llm).call('some text')).to eq([])
+  end
 end
 
 RSpec.describe RCrewAI::Memory::ToolMemory do

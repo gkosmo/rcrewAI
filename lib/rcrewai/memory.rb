@@ -12,10 +12,10 @@ module RCrewAI
   # available, falls back to lexical similarity — so existing code behaves as
   # before, just with better recall once an embedder is configured.
   class Memory
-    def initialize(scope: 'default', embedder: nil, store: nil, short_term_limit: 100)
+    def initialize(scope: 'default', embedder: nil, store: nil, short_term_limit: 100, entity_extractor: nil)
       @short_term = ShortTermMemory.new(scope: scope, embedder: embedder, store: store, limit: short_term_limit)
       @long_term  = LongTermMemory.new(scope: scope, embedder: embedder, store: store)
-      @entity     = EntityMemory.new(scope: scope, embedder: embedder, store: store)
+      @entity     = EntityMemory.new(scope: scope, embedder: embedder, store: store, extractor: entity_extractor)
       @tool       = ToolMemory.new(scope: scope, embedder: embedder, store: store)
     end
 
