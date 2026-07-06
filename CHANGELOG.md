@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-06
+
+Replaces the placeholder agent memory with a **cognitive memory** system —
+semantic recall (embeddings + cosine), optional SQLite persistence, and four
+memory types. This is the one area where CrewAI advanced past what the gem
+originally ported. Backward compatible: the `Memory` public API is unchanged and
+the zero-config default behaves as before.
+
 ### Added
 - Cognitive memory: `RCrewAI::Memory` is now a semantic, optionally-persistent, multi-type memory system, replacing the previous word-overlap placeholder. It composes four memory types — `ShortTermMemory` (recent executions, capped), `LongTermMemory` (durable, deduped insights), `EntityMemory` (facts about entities seen in work), and `ToolMemory` (tool-call history) — behind the original `Memory` public API.
 - Semantic recall: pass `Agent.new(memory: { embedder: RCrewAI::Knowledge::Embedder.new })` to recall conceptually related past work via embeddings + cosine similarity. Without an embedder, recall falls back to lexical (word-overlap) similarity — and embedding failures fall back gracefully, so memory never breaks execution.
@@ -190,7 +198,8 @@ output, guardrails, planning, and training/testing. See `ROADMAP.md`.
 - CLI usage documentation
 - Real-world use cases and examples
 
-[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/gkosmo/rcrewAI/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/gkosmo/rcrewAI/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/gkosmo/rcrewAI/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/gkosmo/rcrewAI/compare/v0.1.0...v0.3.0
