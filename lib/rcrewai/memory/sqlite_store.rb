@@ -15,11 +15,14 @@ module RCrewAI
     class SqliteStore
       DEFAULT_PATH = File.join(Dir.home, '.rcrewai', 'memory.db')
 
-      def initialize(path: DEFAULT_PATH)
+      # max_candidates bounds how many (most-recent) rows a search cosines, so
+      # recall cost stays constant as total memory grows. nil = consider all.
+      def initialize(path: DEFAULT_PATH, max_candidates: 1000)
         require 'sqlite3'
         ensure_parent_dir(path) unless path == ':memory:'
         @db = SQLite3::Database.new(path)
         @db.results_as_hash = true
+        @max_candidates = max_candidates
         create_schema
       end
 
@@ -37,7 +40,7 @@ module RCrewAI
       end
 
       def search(vector, k:, scope:)
-        all(scope: scope)
+        candidates(scope)
           .reject { |r| r[:vector].nil? }
           .map { |r| [r, Similarity.cosine(vector, r[:vector])] }
           .sort_by { |(_r, score)| -score }
@@ -54,6 +57,18 @@ module RCrewAI
       end
 
       private
+
+      # The rows a search will consider: the most-recent @max_candidates within
+      # the scope (rowid tracks insertion order). Bounds cosine cost at scale.
+      def candidates(scope)
+        sql = 'SELECT * FROM memories WHERE scope = ? ORDER BY rowid DESC'
+        params = [scope]
+        if @max_candidates
+          sql += ' LIMIT ?'
+          params << @max_candidates
+        end
+        @db.execute(sql, params).map { |row| to_record(row) }
+      end
 
       def create_schema
         @db.execute(<<~SQL)

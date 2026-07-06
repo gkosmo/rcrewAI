@@ -91,4 +91,28 @@ RSpec.describe RCrewAI::Memory::SqliteStore do
     expect(reopened.all(scope: 's').map { |r| r[:text] }).to eq(['durable'])
     expect(reopened.search([1.0, 0.0], k: 1, scope: 's').first[:text]).to eq('durable')
   end
+
+  describe 'bounded candidate set for scale' do
+    it 'only cosines the most-recent-N candidates (max_candidates)' do
+      bounded = described_class.new(path: @db_path, max_candidates: 2)
+      # Add an old best-match, then two newer non-matches.
+      bounded.add(id: 'old', text: 'perfect', vector: [1.0, 0.0], scope: 's')
+      bounded.add(id: 'n1', text: 'newer1', vector: [0.0, 1.0], scope: 's')
+      bounded.add(id: 'n2', text: 'newer2', vector: [0.0, 1.0], scope: 's')
+
+      # With a candidate cap of 2, the old perfect match is outside the window
+      # and is not considered.
+      results = bounded.search([1.0, 0.0], k: 3, scope: 's')
+      expect(results.map { |r| r[:text] }).not_to include('perfect')
+      expect(results.length).to eq(2)
+    end
+
+    it 'considers all candidates when the cap is not exceeded' do
+      bounded = described_class.new(path: @db_path, max_candidates: 100)
+      bounded.add(id: 'a', text: 'match', vector: [1.0, 0.0], scope: 's')
+      bounded.add(id: 'b', text: 'other', vector: [0.0, 1.0], scope: 's')
+
+      expect(bounded.search([1.0, 0.0], k: 1, scope: 's').first[:text]).to eq('match')
+    end
+  end
 end
