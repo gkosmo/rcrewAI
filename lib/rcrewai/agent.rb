@@ -39,7 +39,7 @@ module RCrewAI
       @reasoning = options.fetch(:reasoning, false)
       @max_reasoning_attempts = options.fetch(:max_reasoning_attempts, 3)
       @respect_context_window = options.fetch(:respect_context_window, false)
-      @memory = Memory.new
+      @memory = build_memory(options[:memory])
       @rate_limiter = options[:max_rpm] ? RateLimiter.new(max_rpm: options[:max_rpm]) : nil
       @llm_client = wrap_with_rate_limiter(build_llm_client(options[:llm]))
       @knowledge = build_knowledge(options[:knowledge], options[:knowledge_sources])
@@ -218,6 +218,17 @@ module RCrewAI
       return client unless @rate_limiter
 
       RateLimiter::ThrottledClient.new(client, @rate_limiter)
+    end
+
+    # Builds the agent's memory. Accepts a pre-built Memory, an options hash
+    # (`{ embedder:, store:, scope:, short_term_limit: }`), or nil for the
+    # zero-config default. Memory is scoped to the agent's name so agents don't
+    # share recall (matters when a persistent store is shared).
+    def build_memory(memory)
+      return memory if memory.is_a?(Memory)
+
+      opts = memory.is_a?(Hash) ? memory : {}
+      Memory.new(scope: opts.fetch(:scope, name), **opts.slice(:embedder, :store, :short_term_limit))
     end
 
     # Accepts a pre-built Knowledge::Base via +knowledge:+ or an array of

@@ -59,6 +59,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'nokogiri', '~> 1.15'
   spec.add_dependency 'pdf-reader', '~> 2.11'
   spec.add_dependency 'ruby-openai', '~> 6.3'
+  spec.add_dependency 'sqlite3', '~> 2.0'
   spec.add_dependency 'thor', '~> 1.3'
 
   # Development dependencies
