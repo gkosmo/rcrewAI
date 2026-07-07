@@ -30,9 +30,10 @@ require 'benchmark'
 RCrewAI.configure do |config|
   config.llm_provider = :openai
   config.temperature = 0.4
-  config.max_concurrent_tasks = 8  # Allow up to 8 concurrent tasks
-  config.task_timeout = 300        # 5-minute timeout per task
+  config.timeout = 300             # request timeout (seconds)
 end
+# Concurrency is a per-run option, not global config:
+#   crew.execute(async: true, max_concurrency: 8)
 
 # ===== CONCURRENT PROCESSING TOOLS =====
 
@@ -885,9 +886,11 @@ context: []  # Dependency management continues with available results
 Designed for horizontal and vertical scaling:
 
 ```ruby
-config.max_concurrent_tasks = 8    # Configurable concurrency
-config.task_timeout = 300          # Timeout management  
-config.resource_pool_size = 16     # Shared resource scaling
+# Concurrency is controlled per run via the async executor:
+crew.execute(async: true, max_concurrency: 8)   # up to 8 concurrent tasks
+
+# Request timeout is global config:
+RCrewAI.configure { |c| c.timeout = 300 }
 ```
 
 This concurrent processing system provides a complete framework for optimizing performance through intelligent parallel execution while maintaining reliability and quality standards across all processing streams.

@@ -25,12 +25,12 @@ require 'time'
 
 # Configure RCrewAI
 RCrewAI.configure do |config|
-  config.llm_client = :openai
+  config.llm_provider = :openai
   config.openai_api_key = ENV['OPENAI_API_KEY']
   config.log_level = :info
-  config.max_concurrent_tasks = 6
-  config.task_timeout = 300
+  config.timeout = 300              # request timeout (seconds)
 end
+# Concurrency is set per run: crew.execute(async: true, max_concurrency: 6)
 
 # Base tool for common functionality
 class CompositeToolBase < RCrewAI::Tools::Base
