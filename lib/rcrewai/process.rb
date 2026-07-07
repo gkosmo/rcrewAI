@@ -373,23 +373,16 @@ module RCrewAI
       end
     end
 
+    # Multi-agent consensus: for each task, several agents propose candidate
+    # answers, all participants score each candidate, and the highest-scored
+    # candidate wins (ties break toward the task's assigned agent).
     class Consensual < Base
+      DEFAULT_CONSENSUS_AGENTS = 3
+
       def execute
         log_execution_start
-        @logger.info 'Consensual execution - agents collaborate on decisions'
-
-        # For now, implement as enhanced sequential with collaboration
-        # Full consensual process would involve agent voting/discussion
-        results = []
-
-        crew.tasks.each do |task|
-          @logger.info "Collaborative execution of task: #{task.name}"
-
-          # Simple consensus: let multiple agents provide input
-          consensus_result = execute_with_consensus(task)
-          results << consensus_result
-        end
-
+        @logger.info 'Consensual execution - agents propose, vote, and pick'
+        results = crew.tasks.map { |task| execute_with_consensus(task) }
         log_execution_end(results)
         results
       end
@@ -397,13 +390,88 @@ module RCrewAI
       private
 
       def execute_with_consensus(task)
-        # For now, just execute normally
-        # Future: implement actual consensus mechanisms
+        @logger.info "Consensus for task: #{task.name}"
+        participants = select_participants(task)
+        candidates = gather_proposals(task, participants)
 
-        result = task.execute
-        { task: task, result: result, status: :completed }
+        if candidates.empty?
+          return { task: task, result: 'All agents failed to produce a proposal', status: :failed }
+        end
+
+        scored = score_candidates(task, candidates, participants)
+        winner = pick_winner(task, scored)
+        task.result = winner[:content] if task.respond_to?(:result=)
+
+        { task: task, result: winner[:content], status: :completed }
       rescue StandardError => e
+        @logger.error "Consensus failed for #{task.name}: #{e.message}"
         { task: task, result: e.message, status: :failed }
+      end
+
+      # First N agents, always including the task's assigned agent if present.
+      def select_participants(task)
+        cap = consensus_agent_cap
+        chosen = crew.agents.first(cap)
+        assigned = task.respond_to?(:agent) ? task.agent : nil
+        if assigned && crew.agents.include?(assigned) && !chosen.include?(assigned)
+          chosen = ([assigned] + chosen).first(cap)
+        end
+        chosen
+      end
+
+      def gather_proposals(task, participants)
+        participants.filter_map do |agent|
+          content = extract_content(agent.execute_task(task))
+          { agent: agent, content: content }
+        rescue StandardError => e
+          @logger.warn "Agent #{agent.name} failed to propose: #{e.message}"
+          nil
+        end
+      end
+
+      def score_candidates(task, candidates, participants)
+        candidates.map do |candidate|
+          total = participants.sum { |voter| score(voter, task, candidate[:content]) }
+          candidate.merge(score: total)
+        end
+      end
+
+      def score(voter, task, candidate_content)
+        prompt = <<~PROMPT
+          Score how well the following answer satisfies the task, from 0 to 10.
+          Reply with just the integer.
+
+          Task: #{task.description}
+          Expected output: #{task.respond_to?(:expected_output) ? task.expected_output : 'n/a'}
+
+          Answer:
+          #{candidate_content}
+        PROMPT
+        response = voter.llm_client.chat(messages: [{ role: 'user', content: prompt }])
+        parse_score(response.is_a?(Hash) ? response[:content] : response)
+      rescue StandardError
+        0
+      end
+
+      def pick_winner(task, scored)
+        assigned = task.respond_to?(:agent) ? task.agent : nil
+        scored.max_by { |c| [c[:score], c[:agent] == assigned ? 1 : 0] }
+      end
+
+      def parse_score(text)
+        match = text.to_s[/-?\d+/]
+        return 0 unless match
+
+        match.to_i.clamp(0, 10)
+      end
+
+      def extract_content(agent_result)
+        agent_result.is_a?(Hash) ? agent_result[:content].to_s : agent_result.to_s
+      end
+
+      def consensus_agent_cap
+        cap = crew.respond_to?(:consensus_agents) ? crew.consensus_agents : nil
+        [(cap || DEFAULT_CONSENSUS_AGENTS).to_i, 1].max
       end
     end
 

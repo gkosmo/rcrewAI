@@ -22,6 +22,7 @@ module RCrewAI
       @planning = options.fetch(:planning, false)
       @planning_llm = options[:planning_llm]
       @planned = false
+      @consensus_agents = options.fetch(:consensus_agents, 3)
       @knowledge = build_knowledge(options[:knowledge], options[:knowledge_sources])
       @before_kickoff_hooks = []
       @after_kickoff_hooks = []
@@ -30,7 +31,7 @@ module RCrewAI
       validate_process_type!
     end
 
-    attr_reader :knowledge, :stream_sink, :last_inputs
+    attr_reader :knowledge, :stream_sink, :last_inputs, :consensus_agents
 
     def planning?
       @planning

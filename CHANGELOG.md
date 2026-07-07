@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The `:consensual` crew process now performs real multi-agent consensus instead of silently running sequentially. For each task, up to `consensus_agents` agents (default 3) propose candidate answers, all participants score each candidate 0–10, and the highest-scored candidate wins (ties break toward the task's assigned agent). Configure via `Crew.new(process: :consensual, consensus_agents: N)`. A proposer that errors is dropped; if all proposals fail the task is marked failed. **Behavior change:** code relying on `:consensual`'s previous (accidental) sequential behavior should switch to `process: :sequential`. See `docs/upgrading-to-0.7.md`.
+
 ## [0.6.1] - 2026-07-06
 
 Follow-ups to the 0.6.0 Cognitive Memory release, deepening the areas that
