@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-07
+
+Turns the `:consensual` crew process from a stub into a real multi-agent
+consensus (propose → vote → pick). This is a behavior change to an existing
+process type — see `docs/upgrading-to-0.7.md`.
+
 ### Changed
 - The `:consensual` crew process now performs real multi-agent consensus instead of silently running sequentially. For each task, up to `consensus_agents` agents (default 3) propose candidate answers, all participants score each candidate 0–10, and the highest-scored candidate wins (ties break toward the task's assigned agent). Configure via `Crew.new(process: :consensual, consensus_agents: N)`. A proposer that errors is dropped; if all proposals fail the task is marked failed. **Behavior change:** code relying on `:consensual`'s previous (accidental) sequential behavior should switch to `process: :sequential`. See `docs/upgrading-to-0.7.md`.
 
@@ -211,7 +217,8 @@ output, guardrails, planning, and training/testing. See `ROADMAP.md`.
 - CLI usage documentation
 - Real-world use cases and examples
 
-[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/gkosmo/rcrewAI/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/gkosmo/rcrewAI/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/gkosmo/rcrewAI/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/gkosmo/rcrewAI/compare/v0.4.0...v0.5.0
