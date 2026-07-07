@@ -445,6 +445,26 @@ flow.state.id          # => automatic UUID
   or your own `#save`/`#load`) and call `flow.restore(id)` to resume.
 - Invoke a `Crew` inside any step, or pause with `human_feedback('Approve?')`.
 
+## 🗳️ Consensual Process
+
+For decisions where multiple perspectives matter, the `:consensual` process has
+several agents propose competing answers and vote to pick the best:
+
+```ruby
+crew = RCrewAI::Crew.new('panel', process: :consensual, consensus_agents: 3)
+crew.add_agent(junior)
+crew.add_agent(senior)
+crew.add_task(task)
+
+crew.execute   # each task: agents propose → all score 0–10 → highest wins
+```
+
+For every task, up to `consensus_agents` agents (default 3) propose a candidate
+answer, all participants score each candidate, and the highest-scored candidate
+becomes the result (ties break toward the task's assigned agent). A proposer that
+errors is dropped; if all proposals fail the task is marked failed. Consensus
+multiplies LLM calls, so `consensus_agents` bounds the cost on larger crews.
+
 ## 💡 Examples
 
 ### Hierarchical Team with Human Oversight
