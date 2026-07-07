@@ -32,6 +32,13 @@ Creates a new task instance.
 - `allow_guidance` (Boolean) - Allow human guidance during execution
 - `human_review_points` (Array) - Points where human review is requested ([:completion, :error])
 - `async` (Boolean) - Whether task can be executed asynchronously (default: false)
+- `output_schema` (Hash) - A JSON-schema subset the output is validated/coerced against; parsed result on `#structured_output` (raw string on `#raw_result`). Non-conforming output re-runs the agent with the error fed back
+- `guardrail` (callable) - `->(output) { [ok, value_or_error] }` to validate/transform output before it flows downstream
+- `guardrail_max_retries` (Integer) - Guardrail retries with the reason fed back (default: 3)
+- `output_file` (String) - Path to write the result to after completion
+- `create_directory` (Boolean) - Create the output file's parent dirs (default: true)
+- `markdown` (Boolean) - Prepend a heading when the output isn't already markdown (default: false)
+- `attachments` (Array) - Multimodal image inputs, e.g. `[{ type: :image, path: 'x.png' }]` or `{ type: :image, url: '...' }` (OpenAI/Azure). See [Advanced Agent Options]({{ site.baseurl }}/tutorials/agent-options)
 
 **Returns:** `RCrewAI::Task` instance
 
