@@ -10,18 +10,26 @@ The Crew class is the main orchestrator in RCrewAI. It manages a collection of a
 
 ## Class Methods
 
-### `.new(name)`
+### `.new(name, **options)`
 
 Creates a new crew instance.
 
 **Parameters:**
 - `name` (String) - The name of the crew
+- `process` (Symbol, optional) - `:sequential` (default), `:hierarchical`, or `:consensual`
+- `consensus_agents` (Integer, optional) - For `:consensual`, how many agents propose and vote per task (default: 3). See [Consensual Process]({{ site.baseurl }}/tutorials/consensual-process)
+- `planning` (Boolean, optional) - Run a planner pass that drafts a per-task plan before execution (default: false)
+- `planning_llm` (Symbol \| Hash \| client, optional) - The planner's LLM (defaults to the global provider)
+- `knowledge` (Knowledge::Base, optional) - A knowledge base shared with all agents
+- `knowledge_sources` (Array, optional) - Sources the crew wraps in a shared base (see [Knowledge (RAG)]({{ site.baseurl }}/tutorials/knowledge))
+- `verbose` (Boolean, optional) - Detailed logging (default: false)
+- `max_iterations` (Integer, optional) - Max iterations per agent (default: 10)
 
 **Returns:** `RCrewAI::Crew` instance
 
 **Example:**
 ```ruby
-crew = RCrewAI::Crew.new("research_team")
+crew = RCrewAI::Crew.new("research_team", process: :consensual, consensus_agents: 3)
 ```
 
 ### `.create(name)`
@@ -343,3 +351,45 @@ crew.add_agent(manager)
 
 crew.execute
 ```
+
+### Consensual Process
+
+Agents propose competing answers and vote to pick the best (see the
+[Consensual Process]({{ site.baseurl }}/tutorials/consensual-process) tutorial).
+
+```ruby
+crew = RCrewAI::Crew.new("panel", process: :consensual, consensus_agents: 3)
+crew.add_agent(junior)
+crew.add_agent(senior)
+crew.add_task(task)
+
+crew.execute   # each task: propose → vote → pick
+```
+
+## Lifecycle, Batch, Training
+
+### `#before_kickoff { |inputs| ... }` / `#after_kickoff { |result| ... }`
+
+Register callbacks that run before/after execution. A `before_kickoff` hook
+receives the inputs hash (from `execute(inputs:)`) and may transform it; an
+`after_kickoff` hook receives and may transform the result. The resolved inputs
+are exposed on `#last_inputs`.
+
+### `#kickoff_for_each(inputs:)`
+
+Runs the crew once per input set, returning one result per input in order. Runs
+are isolated to their own inputs.
+
+```ruby
+results = crew.kickoff_for_each(inputs: [{ topic: "ruby" }, { topic: "python" }])
+```
+
+### `#train(n_iterations:, filename:, feedback: nil)`
+
+Runs the crew repeatedly, collects feedback after each run (via a `feedback:`
+callable, defaulting to a human prompt), and persists it to JSON.
+
+### `#test(n_iterations:, scorer: nil)`
+
+Runs the crew repeatedly and reports per-run and average scores (via a `scorer:`
+callable, defaulting to the run's success rate).

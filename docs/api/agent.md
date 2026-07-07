@@ -28,6 +28,14 @@ Creates a new agent instance.
 - `human_input` (Boolean, optional) - Enable human-in-the-loop interactions (default: false)
 - `require_approval_for_tools` (Boolean, optional) - Require human approval for tool usage
 - `require_approval_for_final_answer` (Boolean, optional) - Require human approval for final results
+- `llm` (Symbol \| Hash \| client, optional) - Per-agent LLM override: a provider symbol (`:anthropic`), an options hash (`{ provider:, model:, api_key:, temperature: }`), or a pre-built client. Defaults to the global configuration. See [Advanced Agent Options]({{ site.baseurl }}/tutorials/agent-options)
+- `reasoning` (Boolean, optional) - Run a reasoning/planning pass before answering (default: false); surfaced on the result as `:reasoning`
+- `max_reasoning_attempts` (Integer, optional) - Reasoning retries on empty output (default: 3)
+- `respect_context_window` (Boolean, optional) - Trim history to fit the model's context window (default: false)
+- `max_rpm` (Integer, optional) - Throttle the agent's LLM calls to this many requests per minute (default: unlimited)
+- `knowledge` (Knowledge::Base, optional) - A knowledge base to ground the agent (see [Knowledge (RAG)]({{ site.baseurl }}/tutorials/knowledge))
+- `knowledge_sources` (Array, optional) - Knowledge sources the agent wraps in a base
+- `memory` (Memory \| Hash, optional) - A pre-built `Memory`, or options (`{ embedder:, store:, scope:, short_term_limit:, entity_extractor: }`); defaults to zero-config in-memory (see [Cognitive Memory]({{ site.baseurl }}/tutorials/memory))
 
 **Returns:** `RCrewAI::Agent` instance
 
