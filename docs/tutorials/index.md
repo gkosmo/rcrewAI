@@ -62,6 +62,51 @@ Welcome to the RCrewAI tutorials! These step-by-step guides will take you from b
 
 ---
 
+## ✨ Capabilities (0.4 – 0.7)
+
+The features that grew RCrewAI beyond the classic crew model.
+
+### [Flows — Event-Driven Workflows]({{ site.baseurl }}/tutorials/flows)
+**Orchestrate with branching and state.** `start`/`listen`/`router`, `and_`/`or_`
+combinators, schemaless state with a UUID, persistence and resume, running crews
+as steps, and `human_feedback` pause points.
+
+**Prerequisites:** Getting Started tutorial  
+**Difficulty:** Intermediate ⭐⭐
+
+### [Knowledge (RAG)]({{ site.baseurl }}/tutorials/knowledge)
+**Ground agents in your documents.** String/file/PDF/CSV/URL sources, chunking,
+multi-provider embeddings, and agent- or crew-level attachment with automatic
+retrieval into the prompt.
+
+**Prerequisites:** Getting Started tutorial  
+**Difficulty:** Intermediate ⭐⭐
+
+### [Cognitive Memory]({{ site.baseurl }}/tutorials/memory)
+**Agents that remember.** Semantic recall (embeddings + cosine), optional SQLite
+persistence, and short-term/long-term/entity/tool memory types — with a
+zero-config default.
+
+**Prerequisites:** Getting Started tutorial  
+**Difficulty:** Intermediate ⭐⭐
+
+### [Consensual Process]({{ site.baseurl }}/tutorials/consensual-process)
+**Multi-agent voting.** Agents propose competing answers and score each other to
+pick the best; tune cost with `consensus_agents`.
+
+**Prerequisites:** Getting Started tutorial  
+**Difficulty:** Beginner ⭐
+
+### [Advanced Agent & Task Options]({{ site.baseurl }}/tutorials/agent-options)
+**Production controls.** Per-agent LLM, reasoning passes, rate limiting,
+context-window management, multimodal input, structured output, guardrails,
+planning, lifecycle hooks, and batch runs.
+
+**Prerequisites:** Getting Started tutorial  
+**Difficulty:** Intermediate ⭐⭐
+
+---
+
 ## 🏗️ Architecture & Scaling
 
 ### [Working with Multiple Crews]({{ site.baseurl }}/tutorials/multiple-crews)

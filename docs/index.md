@@ -19,15 +19,30 @@ Build powerful AI agent crews in Ruby that work together to accomplish complex t
 ## Features
 
 - **🤖 Intelligent Agents**: AI agents with reasoning loops, memory, and tool usage capabilities
-- **🔗 Multi-LLM Support**: OpenAI, Anthropic (Claude), Google (Gemini), Azure OpenAI, and Ollama
-- **🛠️ Rich Tool Ecosystem**: Web search, file operations, SQL, email, code execution, PDF processing, and custom tools
-- **🧠 Agent Memory**: Short-term and long-term memory for learning from past executions
+- **🔗 Multi-LLM Support**: OpenAI, Anthropic (Claude), Google (Gemini), Azure OpenAI, and Ollama — configurable per agent
+- **🛠️ Rich Tool Ecosystem**: Native function calling, MCP servers, web search, file operations, SQL, email, code execution, PDF processing, and custom tools
+- **🌊 Flows**: Event-driven workflows (`start`/`listen`/`router`) with branching and persistent state
+- **📚 Knowledge (RAG)**: Ground agents in your own documents (string/file/PDF/CSV/URL) with built-in retrieval
+- **🧠 Cognitive Memory**: Semantic recall (embeddings + cosine) with optional SQLite persistence and short-term/long-term/entity/tool memory types
+- **📤 Structured Output & Guardrails**: Schema-validated task output and validate/transform guardrails
+- **🗳️ Flexible Orchestration**: Sequential, hierarchical, and consensual (propose → vote → pick) processes, plus async execution
 - **🤝 Human-in-the-Loop**: Interactive approval workflows, human guidance, and collaborative decision making
-- **⚡ Advanced Task System**: Dependencies, retries, async/concurrent execution, and context sharing
-- **🏗️ Hierarchical Teams**: Manager agents that coordinate and delegate tasks to specialist agents
-- **🔒 Production Ready**: Security controls, error handling, logging, monitoring, and sandboxing
-- **🎯 Flexible Orchestration**: Sequential, hierarchical, and concurrent execution modes
+- **⚡ Advanced Task System**: Dependencies, retries, async/concurrent execution, planning, and context sharing
+- **🎛️ Production Controls**: Rate limiting (`max_rpm`), context-window management, reasoning passes, multimodal input, and streaming events with cost tracking
 - **💎 Ruby-First Design**: Built specifically for Ruby developers with idiomatic patterns
+
+## What's new (0.4 – 0.7)
+
+RCrewAI has expanded well beyond the classic crew model. Recent releases added:
+
+- **[Flows]({{ site.baseurl }}/tutorials/flows)** — a second orchestration pillar for event-driven, stateful workflows
+- **[Knowledge / RAG]({{ site.baseurl }}/tutorials/knowledge)** — retrieval-augmented grounding from your own documents
+- **[Cognitive Memory]({{ site.baseurl }}/tutorials/memory)** — semantic, persistent, multi-type agent memory
+- **[Consensual process]({{ site.baseurl }}/tutorials/consensual-process)** — multi-agent voting to pick the best answer
+- **[Advanced agent options]({{ site.baseurl }}/tutorials/agent-options)** — per-agent LLM, reasoning, rate limiting, context-window management, multimodal, structured output, guardrails, and lifecycle hooks
+
+See the [CHANGELOG](https://github.com/gkosmo/rcrewAI/blob/main/CHANGELOG.md) and the
+per-release upgrade guides (e.g. [upgrading to 0.7](https://github.com/gkosmo/rcrewAI/blob/main/docs/upgrading-to-0.7.md)) for details.
 
 ## Quick Start
 
