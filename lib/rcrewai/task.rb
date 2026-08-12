@@ -44,6 +44,7 @@ module RCrewAI
       @start_time = nil
       @end_time = nil
       @execution_time = nil
+      @stream_sink = nil
       @retry_count = 0
       @max_retries = options.fetch(:max_retries, 2)
     end

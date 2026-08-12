@@ -73,6 +73,11 @@ module RCrewAI
 
       result = async ? execute_async(**async_options) : execute_sync
       run_after_hooks(result)
+    ensure
+      # Drop per-task references to the caller's sink so request-scoped
+      # collectors do not stay reachable after the run. The crew's own
+      # +stream_sink+ reader is left intact: Process reads it.
+      @tasks.each { |t| t.stream_sink = nil }
     end
 
     # Runs the crew once per input set, returning one result per input in order.
