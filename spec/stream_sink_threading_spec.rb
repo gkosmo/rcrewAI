@@ -80,4 +80,67 @@ RSpec.describe 'stream sink threading' do
 
     expect(task.stream_sink).to be_nil
   end
+
+  it 'delivers events from tasks executed on async worker threads' do
+    crew = RCrewAI::Crew.new('async-observed')
+    2.times do |i|
+      agent = RCrewAI::Agent.new(
+        name: "writer#{i}", role: 'Writer', goal: 'Write', backstory: 'A writer'
+      )
+      crew.add_agent(agent)
+      crew.add_task(
+        RCrewAI::Task.new(
+          name: "write#{i}", description: 'Write a line',
+          expected_output: 'A line', agent: agent
+        )
+      )
+    end
+
+    mutex    = Mutex.new
+    received = []
+    crew.execute(async: true, stream: ->(e) { mutex.synchronize { received << e } })
+
+    expect(received).not_to be_empty
+    expect(received.map(&:agent).uniq.compact.size).to be >= 1
+  end
+
+  # Events.fan_out offers NO serialization: it calls each sink inline on
+  # whichever thread emitted the event. Under async execution that is a pool
+  # worker, so a single sink shared by several concurrently-running agents is
+  # invoked from several threads at once and MUST do its own locking.
+  #
+  # This asserts the observable half of that contract -- one sink really does
+  # receive the interleaved output of multiple agents running on distinct
+  # worker threads -- without racing on wall-clock timing. Each task runs to
+  # completion before +execute+ returns, so the expected agent names and thread
+  # count are deterministic.
+  it 'funnels events from concurrently executing agents into one shared sink' do
+    crew = RCrewAI::Crew.new('async-shared-sink')
+    3.times do |i|
+      agent = RCrewAI::Agent.new(
+        name: "writer#{i}", role: 'Writer', goal: 'Write', backstory: 'A writer'
+      )
+      crew.add_agent(agent)
+      crew.add_task(
+        RCrewAI::Task.new(
+          name: "write#{i}", description: 'Write a line',
+          expected_output: 'A line', agent: agent
+        )
+      )
+    end
+
+    mutex   = Mutex.new
+    records = []
+    crew.execute(
+      async: true, max_concurrency: 3,
+      stream: ->(e) { mutex.synchronize { records << [e.agent, Thread.current.object_id] } }
+    )
+
+    # Every agent's events reached the one sink the caller handed to execute.
+    expect(records.map(&:first).uniq).to match_array(%w[writer0 writer1 writer2])
+
+    # The sink was driven from more than one thread, so fan_out gave it no
+    # serialization of its own. A sink without a mutex would be unsafe here.
+    expect(records.map(&:last).uniq.size).to be > 1
+  end
 end
