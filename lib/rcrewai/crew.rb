@@ -64,6 +64,7 @@ module RCrewAI
       sinks << block if block_given?
       Array(stream).each { |s| sinks << s } if stream
       @stream_sink = sinks.empty? ? nil : RCrewAI::Events.fan_out(sinks)
+      @tasks.each { |t| t.stream_sink = @stream_sink }
 
       run_before_hooks(inputs)
 

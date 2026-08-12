@@ -14,7 +14,7 @@ class FakeConsensusAgent
     @llm = FakeScoringClient.new(@scores)
   end
 
-  def execute_task(_task)
+  def execute_task(_task, **_opts)
     raise 'proposal failed' if @raise_on_propose
 
     { content: @proposal }
@@ -44,8 +44,8 @@ def fake_task(name: 'task', agent: nil)
 end
 
 def fake_crew(agents:, tasks:, consensus_agents: 3)
-  Struct.new(:name, :verbose, :agents, :tasks, :consensus_agents)
-        .new('crew', false, agents, tasks, consensus_agents)
+  Struct.new(:name, :verbose, :agents, :tasks, :consensus_agents, :stream_sink)
+        .new('crew', false, agents, tasks, consensus_agents, nil)
 end
 
 RSpec.describe RCrewAI::Process::Consensual do

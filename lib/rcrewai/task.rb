@@ -10,7 +10,7 @@ module RCrewAI
     include HumanInteractionExtensions
     attr_reader :name, :description, :agent, :context, :expected_output, :tools, :async,
                 :raw_result, :structured_output, :attachments
-    attr_accessor :result, :status, :start_time, :end_time, :execution_time
+    attr_accessor :result, :status, :start_time, :end_time, :execution_time, :stream_sink
 
     def initialize(name:, description:, agent: nil, **options)
       @name = name
@@ -218,7 +218,7 @@ module RCrewAI
 
       loop do
         attempts += 1
-        raw = extract_content(agent.execute_task(self))
+        raw = extract_content(agent.execute_task(self, stream: @stream_sink))
         @raw_result = raw
 
         begin
