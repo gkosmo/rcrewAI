@@ -351,7 +351,7 @@ module RCrewAI
         end
 
         # Execute the task
-        agent.execute_task(enhanced_task)
+        agent.execute_task(enhanced_task, stream: crew.stream_sink)
       end
 
       def should_abort_execution?(failed_tasks, phase_number, _plan)
@@ -421,7 +421,7 @@ module RCrewAI
 
       def gather_proposals(task, participants)
         participants.filter_map do |agent|
-          content = extract_content(agent.execute_task(task))
+          content = extract_content(agent.execute_task(task, stream: crew.stream_sink))
           { agent: agent, content: content }
         rescue StandardError => e
           @logger.warn "Agent #{agent.name} failed to propose: #{e.message}"

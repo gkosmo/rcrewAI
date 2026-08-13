@@ -75,7 +75,7 @@ RSpec.describe RCrewAI::Task do
 
   describe '#execute' do
     before do
-      allow(agent).to receive(:execute_task).with(subject).and_return('Task completed')
+      allow(agent).to receive(:execute_task).with(subject, any_args).and_return('Task completed')
     end
 
     it 'executes task and sets result' do

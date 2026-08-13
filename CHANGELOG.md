@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-13
+
+### Fixed
+- `Crew#execute` built its event sink but never delivered it to agents, so no agent-level events (`IterationStart`/`IterationEnd`, tool calls, token usage) reached a sink passed to `crew.execute(stream:)`. `Task` now carries a `stream_sink` that `Crew` populates at execute time and passes to `Agent#execute_task`; the two `Process` call sites that bypass `Task#execute` read `crew.stream_sink` directly. Subscribers now receive the full event stream on the sync, async, hierarchical, and consensual paths.
+- Tasks retained a reference to the caller's sink after `execute` returned, keeping request-scoped subscribers reachable for the lifetime of the task object. The sink is now cleared in an `ensure`.
+
+### Note
+- `Events.fan_out` invokes sinks inline on the emitting thread with no serialization, so under `async: true` a sink may be called concurrently from multiple worker threads. Subscribers must do their own locking.
+
 ## [0.7.0] - 2026-07-07
 
 Turns the `:consensual` crew process from a stub into a real multi-agent
@@ -217,7 +226,8 @@ output, guardrails, planning, and training/testing. See `ROADMAP.md`.
 - CLI usage documentation
 - Real-world use cases and examples
 
-[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/gkosmo/rcrewAI/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/gkosmo/rcrewAI/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/gkosmo/rcrewAI/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/gkosmo/rcrewAI/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/gkosmo/rcrewAI/compare/v0.5.0...v0.6.0

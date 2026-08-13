@@ -64,6 +64,7 @@ module RCrewAI
       sinks << block if block_given?
       Array(stream).each { |s| sinks << s } if stream
       @stream_sink = sinks.empty? ? nil : RCrewAI::Events.fan_out(sinks)
+      @tasks.each { |t| t.stream_sink = @stream_sink }
 
       run_before_hooks(inputs)
 
@@ -72,6 +73,11 @@ module RCrewAI
 
       result = async ? execute_async(**async_options) : execute_sync
       run_after_hooks(result)
+    ensure
+      # Drop per-task references to the caller's sink so request-scoped
+      # collectors do not stay reachable after the run. The crew's own
+      # +stream_sink+ reader is left intact: Process reads it.
+      @tasks.each { |t| t.stream_sink = nil }
     end
 
     # Runs the crew once per input set, returning one result per input in order.
