@@ -37,6 +37,7 @@ module RCrewAI
       @logger = Logger.new($stdout)
       @logger.level = verbose ? Logger::DEBUG : Logger::INFO
       @reasoning = options.fetch(:reasoning, false)
+      @parallel_tools = options.fetch(:parallel_tools, true)
       @max_reasoning_attempts = options.fetch(:max_reasoning_attempts, 3)
       @respect_context_window = options.fetch(:respect_context_window, false)
       @memory = build_memory(options[:memory])
@@ -60,11 +61,16 @@ module RCrewAI
         runner_class = pick_runner_class
         @logger.info "[rcrewai] agent=#{name} runner=#{runner_class.name.split('::').last}"
 
-        runner = runner_class.new(
+        runner_opts = {
           agent: self, llm: @llm_client, tools: @tools,
           max_iterations: opts.fetch(:max_iterations, max_iterations),
           event_sink: sink
-        )
+        }
+        # Only the native-tool runner executes tool calls concurrently; the
+        # legacy runner parses one USE_TOOL[] directive at a time.
+        runner_opts[:parallel_tools] = @parallel_tools if runner_class == ToolRunner
+
+        runner = runner_class.new(**runner_opts)
 
         runner_result = runner.run(messages: initial_messages)
         execution_time = Time.now - start_time
