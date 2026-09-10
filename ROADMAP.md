@@ -5,7 +5,7 @@ This roadmap tracks feature parity between **RCrewAI** (Ruby) and the upstream
 
 ## Current status
 
-- **RCrewAI:** `0.8.1` released; 1.0.0 concurrency work underway on `main`
+- **RCrewAI:** `0.8.1` released; 1.0.0 concurrency work merged to `main`, unreleased
 - **Upstream crewai:** `1.15.21`
 
 RCrewAI is a faithful port of CrewAI's **"Crews"** mental model (Agents / Tasks /
@@ -15,12 +15,12 @@ human-in-the-loop), and it carries CrewAI's second pillar (**Flows**) plus
 **training/testing**. In one area — cognitive memory (semantic recall, SQLite
 persistence, four memory types) — the gem went past what was originally ported.
 
-**Status: one milestone remaining.** An earlier revision of this file declared
+**Status: roadmap complete.** An earlier revision of this file declared
 parity "complete" against a matrix that only covered CrewAI through roughly
 `1.0` (October 2025) while quoting `1.15.x` in its header; everything upstream
-added across `1.1`–`1.15` was unmeasured. That delta was re-derived, and three
-of the four scheduled milestones have since shipped. Only native async (1.0.0)
-is outstanding, and it is blocked on an open decision — see below.
+added across `1.1`–`1.15` was unmeasured. That delta was re-derived, and all four
+scheduled milestones have since shipped. What remains are two additive items
+(Bedrock/Responses streaming, SigV4) and one deferred concept (A2A).
 
 ## Parity matrix
 
@@ -58,7 +58,7 @@ is outstanding, and it is blocked on an open decision — see below.
 | Concept | crewai | RCrewAI | Plan |
 |---|---|---|---|
 | Concurrent tool calls | ✅ (1.4–1.6) | ✅ (#47) | — |
-| Async below the task boundary | ✅ (1.4–1.6) | ⚠️ partial (threads) | 1.0.0 |
+| Concurrent embedding / consensus | ✅ (1.4–1.6) | ✅ (#49, #50) | — |
 | OTel export for the event hierarchy | ✅ (1.10+) | ❌ | 1.0.x |
 | Streaming for Bedrock / Responses | ✅ | ❌ | 1.0.x |
 | Bedrock SigV4 signing | ✅ | ❌ (hook workaround) | 1.0.x |
@@ -116,7 +116,7 @@ Two deliberate limitations carried forward to 1.0.x: Bedrock does not implement
 SigV4 (a hard `aws-sigv4` dependency for one provider is not worth it; sign via
 a `before_request` hook), and Bedrock/Responses are non-streaming only.
 
-### 1.0.0 — Concurrency (in progress)
+### 1.0.0 — Concurrency ✅ shipped
 
 **Decision made: threads, not fibers.** The roadmap previously left this open.
 Prototyping settled it, and not the way the fiber option's low apparent cost
@@ -144,19 +144,37 @@ its *effect* would buy nothing here.
 
 #### Shipped
 
-- **Parallel tool calls** (#47) — a turn's tool calls now run concurrently
-  rather than in sequence, so a turn costs the slowest call rather than their
-  sum (measured: 0.45s → 0.165s for three 150ms tools). Order is preserved by
-  index so the transcript stays aligned with `tool_call` ids, the run span is
-  carried across the thread boundary so the event hierarchy survives, and
-  memory writes are serialized. Bounded by `max_tool_concurrency`; opt out with
-  `Agent.new(parallel_tools: false)`.
+Three fan-out points, all on threads, each bounded and each preserving input
+order (every one of them feeds a positional zip or a deterministic tie-break
+downstream):
+
+- **Parallel tool calls** (#47) — a turn's tool calls run concurrently, so a
+  turn costs the slowest call rather than their sum. Measured 0.45s → 0.165s
+  for three 150ms tools. `Agent.new(parallel_tools: false)` opts out.
+- **Concurrent embedding** (#49) — providers without a batch endpoint
+  (`:google`, `:ollama`) issued one request per text in sequence, so building a
+  knowledge base cost the sum of every chunk's round-trip. Bounded by
+  `Knowledge::Embedder.new(max_concurrency:)`.
+- **Concurrent consensus** (#50) — the `:consensual` process made twelve
+  sequential LLM calls per task with three agents. Proposals and the whole
+  (candidate × voter) scoring grid now fan out. Measured 1.22s → 0.22s.
+  Bounded by `Crew.new(consensus_max_concurrency:)`.
+
+Bounding was not optional: the first consensus implementation was unbounded and
+put 36 concurrent LLM calls in flight with six agents — a thundering herd that
+trips provider rate limits, which is a worse problem than the latency it
+solves. Every fan-out here has a ceiling and a spec asserting it.
 
 #### Remaining
 
-- Concurrent knowledge/embedding lookups, which are IO-bound and independent.
-- Revisit whether anything below the task boundary still blocks unnecessarily
-  once the above lands.
+An audit of `lib/` for per-item IO loops now turns up only CPU-bound work
+(lexical similarity), so the task-boundary goal is met. What is left is not
+concurrency work as such:
+
+- Streaming for Bedrock and Responses (both non-streaming today).
+- Bedrock SigV4 signing, currently a `before_request` hook workaround.
+
+Neither blocks a 1.0.0 release; both are tracked in the gaps table.
 
 ### Deferred — A2A
 
@@ -171,10 +189,15 @@ no current RCrewAI user has asked for. Revisit once the items above land.
 | 0.8.0 | Interceptors + observability | Low | ✅ merged (#39) |
 | 0.9.0 | Checkpointing | Moderate | ✅ merged (#42) |
 | 0.9.x | Providers, Responses API | Low | ✅ merged (#41) |
-| 1.0.0 | Concurrency (threads) | Moderate | 🔨 in progress |
+| 1.0.0 | Concurrency (threads) | Moderate | ✅ merged (#47, #49, #50) |
 
 The three shipped milestones are on `main` and unreleased; they want a version
 bump and a release before or alongside 1.0.0 work.
 
-**1.0.0 is underway on the threads model.** The fibers-vs-threads question is
-settled — see the milestone above for the prototype evidence that decided it.
+**All scheduled milestones are merged.** The concurrency work landed on threads
+across three fan-out points; see the milestone above for the prototype evidence
+that ruled out fibers.
+
+`main` carries the 1.0.0 concurrency work unreleased on top of `0.8.1`. The
+remaining gaps — Bedrock/Responses streaming and SigV4 — are additive and do
+not block cutting a release.
