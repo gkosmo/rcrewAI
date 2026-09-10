@@ -104,16 +104,18 @@ RSpec.describe 'stream sink threading' do
     expect(received.map(&:agent).uniq.compact.size).to be >= 1
   end
 
-  # Events.fan_out offers NO serialization: it calls each sink inline on
-  # whichever thread emitted the event. Under async execution that is a pool
-  # worker, so a single sink shared by several concurrently-running agents is
-  # invoked from several threads at once and MUST do its own locking.
+  # Events.fan_out serializes delivery: sinks are invoked under a mutex, so a
+  # sink shared by several concurrently-running agents is never entered from
+  # two threads at once and needs no locking of its own. (Before 0.8.0 it
+  # offered no such guarantee and every subscriber had to lock; see
+  # spec/events_hierarchy_spec.rb for the serialization contract itself.)
   #
-  # This asserts the observable half of that contract -- one sink really does
-  # receive the interleaved output of multiple agents running on distinct
-  # worker threads -- without racing on wall-clock timing. Each task runs to
-  # completion before +execute+ returns, so the expected agent names and thread
-  # count are deterministic.
+  # Delivery is still driven FROM several pool worker threads -- serialization
+  # orders those calls, it does not funnel them onto one thread. This asserts
+  # the observable half: one sink really does receive the interleaved output of
+  # multiple agents running on distinct workers. Each task runs to completion
+  # before +execute+ returns, so the expected agent names and thread count are
+  # deterministic. The mutex below is now belt-and-braces rather than required.
   it 'funnels events from concurrently executing agents into one shared sink' do
     crew = RCrewAI::Crew.new('async-shared-sink')
     3.times do |i|
@@ -139,8 +141,9 @@ RSpec.describe 'stream sink threading' do
     # Every agent's events reached the one sink the caller handed to execute.
     expect(records.map(&:first).uniq).to match_array(%w[writer0 writer1 writer2])
 
-    # The sink was driven from more than one thread, so fan_out gave it no
-    # serialization of its own. A sink without a mutex would be unsafe here.
+    # Delivery was driven from more than one worker thread. fan_out serializes
+    # those calls rather than collapsing them onto a single thread, so the
+    # distinct-thread count still exceeds one.
     expect(records.map(&:last).uniq.size).to be > 1
   end
 end

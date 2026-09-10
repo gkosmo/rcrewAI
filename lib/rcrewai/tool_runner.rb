@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'securerandom'
 require_relative 'events'
 require_relative 'provider_schema'
 
@@ -16,7 +17,13 @@ module RCrewAI
       @sink = event_sink || ->(_) {}
     end
 
-    def run(messages:) # rubocop:disable Metrics/AbcSize
+    def run(messages:)
+      Events.with_parent(@run_span_id ||= SecureRandom.uuid) { run_loop(messages: messages) }
+    end
+
+    private
+
+    def run_loop(messages:) # rubocop:disable Metrics/AbcSize
       msgs = messages.dup
       history = []
       iter = 0
@@ -78,8 +85,6 @@ module RCrewAI
                finish_reason: :max_iterations, usage: total_usage)
     end
 
-    private
-
     # Trims the message list to the model's context window when the agent
     # supports it; a no-op otherwise.
     def fit_context(messages)
@@ -94,13 +99,13 @@ module RCrewAI
       type_sym = klass.name.split('::').last
                       .gsub(/([A-Z])/) { "_#{Regexp.last_match(1).downcase}" }
                       .sub(/^_/, '').to_sym
-      @sink.call(klass.new(
-                   type: type_sym,
-                   timestamp: Time.now,
-                   agent: agent_name,
-                   iteration: iteration,
-                   **attrs
-                 ))
+      Events.emit(@sink, klass.new(
+                           type: type_sym,
+                           timestamp: Time.now,
+                           agent: agent_name,
+                           iteration: iteration,
+                           **attrs
+                         ))
     end
 
     def agent_name
@@ -110,6 +115,7 @@ module RCrewAI
     def retag(event, iter)
       event.agent = agent_name if event.respond_to?(:agent=) && event.agent.nil?
       event.iteration = iter if event.respond_to?(:iteration=) && event.iteration.nil?
+      event.parent_id ||= Events.current_parent
       event
     end
 
