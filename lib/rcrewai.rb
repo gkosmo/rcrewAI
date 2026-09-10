@@ -19,6 +19,7 @@ end
 require_relative 'rcrewai/version'
 require_relative 'rcrewai/configuration'
 require_relative 'rcrewai/events'
+require_relative 'rcrewai/checkpoint'
 require_relative 'rcrewai/sse_parser'
 require_relative 'rcrewai/pricing'
 require_relative 'rcrewai/llm_client'
