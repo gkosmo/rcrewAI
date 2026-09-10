@@ -28,10 +28,14 @@ module RCrewAI
       @after_kickoff_hooks = []
       @last_inputs = {}
       @process_instance = nil
+      @checkpoint_store = options[:checkpoint]
+      @run_id = nil
+      @parent_run_id = nil
+      @completed_from_checkpoint = {}
       validate_process_type!
     end
 
-    attr_reader :knowledge, :stream_sink, :last_inputs, :consensus_agents
+    attr_reader :knowledge, :stream_sink, :last_inputs, :consensus_agents, :run_id
 
     def planning?
       @planning
@@ -59,12 +63,15 @@ module RCrewAI
       @tasks << task
     end
 
-    def execute(async: false, stream: nil, inputs: {}, **async_options, &block)
+    def execute(async: false, stream: nil, inputs: {}, checkpoint: nil, **async_options, &block)
       sinks = []
       sinks << block if block_given?
       Array(stream).each { |s| sinks << s } if stream
       @stream_sink = sinks.empty? ? nil : RCrewAI::Events.fan_out(sinks)
       @tasks.each { |t| t.stream_sink = @stream_sink }
+
+      @checkpoint_store = checkpoint if checkpoint
+      open_checkpoint_run if @checkpoint_store
 
       run_before_hooks(inputs)
 
@@ -78,6 +85,44 @@ module RCrewAI
       # collectors do not stay reachable after the run. The crew's own
       # +stream_sink+ reader is left intact: Process reads it.
       @tasks.each { |t| t.stream_sink = nil }
+    end
+
+    # Resumes a checkpointed run: tasks that already completed replay their
+    # stored results, and only the rest execute. The resumed run gets its own
+    # run id linked to +run_id+ via parent_run_id, so the original record stays
+    # intact and the chain stays walkable.
+    def resume(run_id, checkpoint: nil, **options)
+      store = checkpoint || @checkpoint_store
+      raise Checkpoint::CheckpointError, 'no checkpoint store configured' unless store
+
+      record = store.load(run_id)
+      raise Checkpoint::CheckpointError, "no checkpoint for run id #{run_id}" unless record
+
+      @checkpoint_store = store
+      @parent_run_id = run_id
+      @completed_from_checkpoint = completed_entries(record)
+      apply_checkpoint(@completed_from_checkpoint)
+
+      execute(**options)
+    end
+
+    # Tasks whose results came from a checkpoint rather than this run.
+    def restored_task_names
+      @completed_from_checkpoint.keys
+    end
+
+    # Records one task's settled state and flushes the run record. Called by
+    # Process as each task finishes, so a crash loses at most the task in
+    # flight rather than the whole run.
+    def checkpoint_task(task, status)
+      return unless @checkpoint_store
+
+      @checkpoint_tasks[task.name] = Checkpoint.task_entry(task, status)
+      write_checkpoint
+    end
+
+    def checkpointing?
+      !@checkpoint_store.nil?
     end
 
     # Runs the crew once per input set, returning one result per input in order.
@@ -172,6 +217,41 @@ module RCrewAI
     end
 
     private
+
+    def open_checkpoint_run
+      @run_id = Checkpoint.new_run_id
+      @checkpoint_tasks = {}
+      # Carry restored entries into the new record so it describes the whole
+      # run, not just the tasks this process happened to execute.
+      @completed_from_checkpoint.each { |name, entry| @checkpoint_tasks[name] = entry }
+      write_checkpoint
+    end
+
+    def write_checkpoint
+      @checkpoint_store.save(
+        @run_id,
+        Checkpoint.record_for(run_id: @run_id, crew_name: @name,
+                              tasks: @checkpoint_tasks, parent_run_id: @parent_run_id)
+      )
+    end
+
+    def completed_entries(record)
+      (record['tasks'] || {}).select { |_name, entry| entry['status'] == 'completed' }
+    end
+
+    # Replays stored results onto the matching tasks so downstream tasks can
+    # still read their context. A checkpointed name with no matching task is
+    # ignored: the crew may legitimately have been rebuilt differently.
+    def apply_checkpoint(entries)
+      @tasks.each do |task|
+        entry = entries[task.name]
+        next unless entry
+
+        task.result = entry['result']
+        task.status = :completed
+        task.execution_time = entry['execution_time']
+      end
+    end
 
     def run_before_hooks(inputs)
       # Assign before running hooks so a hook that reads #last_inputs sees this

@@ -17,6 +17,18 @@ module RCrewAI
 
       protected
 
+      # True when this task's result was replayed from a checkpoint and so must
+      # not be executed again.
+      def restored?(task)
+        crew.respond_to?(:restored_task_names) &&
+          crew.restored_task_names.include?(task.name)
+      end
+
+      # Records a settled task in the crew's checkpoint, if one is active.
+      def checkpoint(task, status)
+        crew.checkpoint_task(task, status) if crew.respond_to?(:checkpoint_task)
+      end
+
       def log_execution_start
         @logger.info "Starting #{self.class.name.split('::').last.downcase} process execution"
         @logger.info "Crew: #{crew.name} with #{crew.agents.length} agents, #{crew.tasks.length} tasks"
@@ -34,13 +46,21 @@ module RCrewAI
         results = []
 
         crew.tasks.each do |task|
+          if restored?(task)
+            @logger.info "Skipping task (restored from checkpoint): #{task.name}"
+            results << { task: task, result: task.result, status: :completed }
+            next
+          end
+
           @logger.info "Executing task: #{task.name}"
           begin
             result = task.execute
             results << { task: task, result: result, status: :completed }
+            checkpoint(task, :completed)
           rescue StandardError => e
             @logger.error "Task #{task.name} failed: #{e.message}"
             results << { task: task, result: e.message, status: :failed }
+            checkpoint(task, :failed)
           end
         end
 
@@ -241,6 +261,15 @@ module RCrewAI
         tasks.each do |task|
           assigned_agent = hierarchy[:task_assignments][task]
 
+          if restored?(task)
+            @logger.info "Skipping task (restored from checkpoint): #{task.name}"
+            phase_results << {
+              task: task, result: task.result, status: :completed,
+              assigned_agent: assigned_agent, phase: phase_number
+            }
+            next
+          end
+
           @logger.info "Manager delegating '#{task.name}' to #{assigned_agent.name}"
 
           begin
@@ -258,8 +287,10 @@ module RCrewAI
               phase: phase_number
             }
 
+            checkpoint(task, :completed)
             @logger.info "Task '#{task.name}' completed successfully"
           rescue StandardError => e
+            checkpoint(task, :failed)
             @logger.error "Delegated task '#{task.name}' failed: #{e.message}"
 
             phase_results << {
@@ -390,11 +421,17 @@ module RCrewAI
       private
 
       def execute_with_consensus(task)
+        if restored?(task)
+          @logger.info "Skipping task (restored from checkpoint): #{task.name}"
+          return { task: task, result: task.result, status: :completed }
+        end
+
         @logger.info "Consensus for task: #{task.name}"
         participants = select_participants(task)
         candidates = gather_proposals(task, participants)
 
         if candidates.empty?
+          checkpoint(task, :failed)
           return { task: task, result: 'All agents failed to produce a proposal', status: :failed }
         end
 
@@ -402,9 +439,11 @@ module RCrewAI
         winner = pick_winner(task, scored)
         task.result = winner[:content] if task.respond_to?(:result=)
 
+        checkpoint(task, :completed)
         { task: task, result: winner[:content], status: :completed }
       rescue StandardError => e
         @logger.error "Consensus failed for #{task.name}: #{e.message}"
+        checkpoint(task, :failed)
         { task: task, result: e.message, status: :failed }
       end
 

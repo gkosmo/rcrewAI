@@ -8,9 +8,13 @@ module RCrewAI
       Crew.create(crew_name)
     end
 
+    # Thor reserves #run, so the command is defined under another name and
+    # mapped back. Without this the whole class raises on load, which is why
+    # cli.rb went unrequired -- and why bin/rcrewai never worked.
     desc 'run', 'Run the AI crew'
     option :crew, type: :string, required: true, desc: 'Name of the crew to run'
-    def run
+    map 'run' => :run_crew
+    def run_crew
       crew_name = options[:crew]
       puts "Running crew: #{crew_name}"
       crew = Crew.load(crew_name)
@@ -31,9 +35,16 @@ module RCrewAI
     desc 'task SUBCOMMAND ...ARGS', 'Manage tasks'
     subcommand 'task', Task::CLI
 
+    desc 'checkpoint SUBCOMMAND ...ARGS', 'Inspect run checkpoints'
+    subcommand 'checkpoint', Checkpoint::CLI
+
     desc 'version', 'Show version'
     def version
       puts "rcrewai version #{RCrewAI::VERSION}"
+    end
+
+    def self.exit_on_failure?
+      true
     end
   end
 end
