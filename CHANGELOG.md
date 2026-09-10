@@ -21,7 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lineage: a resumed run gets its own run id linked to its parent via `parent_run_id`, leaving the original record intact. `Checkpoint.lineage(store, run_id)` walks the chain back to the root, truncating rather than raising if an ancestor has been pruned.
 - CLI: `rcrewai checkpoint list` / `info RUN_ID` / `delete RUN_ID` inspect saved checkpoints (`--dir`, default `.rcrewai/checkpoints`).
 
+- New providers: `:openai_compatible` (any endpoint speaking the OpenAI Chat Completions format — Together, Groq, Fireworks, vLLM, LiteLLM, OpenRouter, a self-hosted gateway; requires `base_url`), `:bedrock` (AWS Bedrock via the Converse API, giving every Bedrock model one request shape; requires `aws_region`), and `:snowflake` (Snowflake Cortex inference; requires `snowflake_account`). New configuration attributes `aws_region` and `snowflake_account`, also read from `AWS_REGION`/`AWS_DEFAULT_REGION` and `SNOWFLAKE_ACCOUNT`.
+- `:openai_responses` — OpenAI's Responses API alongside the existing Chat Completions client. Messages go under `input` with the system prompt lifted to `instructions`, `max_tokens` becomes `max_output_tokens`, tools are sent flat rather than nested under `function`, and the `output` array is parsed back into the canonical `content` / `tool_calls` shape. An `incomplete` response capped by `max_output_tokens` is reported as `finish_reason: :length`. Non-streaming only — Responses streams a distinct set of semantic events that this client does not model.
+- `LLMClient::PROVIDERS` — provider resolution is now a table rather than a `case`, so registering a client is a one-line change.
+
 ### Fixed
+- `LLMClient.for_provider` silently dropped interceptor hooks: it constructed each client with only the config, so `before_request` / `after_response` passed through the normal resolution path never reached the client. It now forwards them.
 - `bin/rcrewai` never worked. `lib/rcrewai/cli.rb` defined `def run`, which Thor reserves, so the class raised `"run" is a Thor reserved word` on load; the file was consequently never required from `lib/rcrewai.rb`, which hid the breakage from the test suite while `bin/rcrewai` — shipped as a gem executable since the initial commit — crashed for every installed user. The command is now defined as `run_crew` and mapped back to `run`, so the user-facing invocation (`rcrewai run --crew NAME`) is unchanged, and the CLI is required and covered by specs.
 
 ## [0.7.1] - 2026-08-13
