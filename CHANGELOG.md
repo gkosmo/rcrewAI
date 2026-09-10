@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Behavior change:** subscribers passed to `crew.execute(stream:)` no longer need their own mutex. Existing sinks that lock are unaffected.
+- Checkpointing: `crew.execute(checkpoint: store)` records durable per-run state, and `crew.resume(run_id)` replays completed tasks instead of re-executing them. Granularity is task-level — a checkpoint is written after each task settles, so a crash loses at most the task in flight. Failed tasks are recorded as failed rather than omitted, so a resume retries them instead of treating them as never-attempted. Supported on the sequential, hierarchical, and consensual processes.
+- Checkpoint stores follow the existing `Flow::StateStore` shape (`save`/`load`/`list`/`delete`): `Checkpoint::MemoryStore` (volatile) and `Checkpoint::FileStore` (one JSON file per run). `FileStore` rejects run ids containing path separators or traversal segments, since ids arrive both from callers and from stored records.
+- Lineage: a resumed run gets its own run id linked to its parent via `parent_run_id`, leaving the original record intact. `Checkpoint.lineage(store, run_id)` walks the chain back to the root, truncating rather than raising if an ancestor has been pruned.
+- CLI: `rcrewai checkpoint list` / `info RUN_ID` / `delete RUN_ID` inspect saved checkpoints (`--dir`, default `.rcrewai/checkpoints`).
+
+### Fixed
+- `bin/rcrewai` never worked. `lib/rcrewai/cli.rb` defined `def run`, which Thor reserves, so the class raised `"run" is a Thor reserved word` on load; the file was consequently never required from `lib/rcrewai.rb`, which hid the breakage from the test suite while `bin/rcrewai` — shipped as a gem executable since the initial commit — crashed for every installed user. The command is now defined as `run_crew` and mapped back to `run`, so the user-facing invocation (`rcrewai run --crew NAME`) is unchanged, and the CLI is required and covered by specs.
 
 ## [0.7.1] - 2026-08-13
 

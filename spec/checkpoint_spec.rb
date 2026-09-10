@@ -305,3 +305,95 @@ RSpec.describe 'crew checkpointing' do
     end
   end
 end
+
+RSpec.describe 'checkpointing across process types' do
+  let(:store) { RCrewAI::Checkpoint::MemoryStore.new }
+
+  def stub_llm(answer: 'FINAL_ANSWER[done]')
+    llm = instance_double('LLMClient')
+    allow(llm).to receive(:chat).and_return(
+      content: answer, finish_reason: :stop,
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+    )
+    allow(llm).to receive(:supports_native_tools?).and_return(false)
+    allow(RCrewAI::LLMClient).to receive(:for_provider).and_return(llm)
+    llm
+  end
+
+  def hierarchical_crew(name: 'hcp')
+    crew = RCrewAI::Crew.new(name, process: :hierarchical)
+    manager = RCrewAI::Agent.new(name: 'boss', role: 'Manager', goal: 'Coordinate',
+                                 backstory: 'Leads', manager: true, allow_delegation: true)
+    worker = RCrewAI::Agent.new(name: 'w', role: 'W', goal: 'G', backstory: 'B')
+    crew.add_agent(manager)
+    crew.add_agent(worker)
+    %w[t1 t2].each do |tn|
+      crew.add_task(RCrewAI::Task.new(name: tn, description: "do #{tn}",
+                                      expected_output: 'out', agent: worker))
+    end
+    crew
+  end
+
+  def consensual_crew(name: 'ccp')
+    crew = RCrewAI::Crew.new(name, process: :consensual, consensus_agents: 2)
+    2.times do |i|
+      crew.add_agent(RCrewAI::Agent.new(name: "a#{i}", role: 'W', goal: 'G', backstory: 'B'))
+    end
+    %w[t1 t2].each do |tn|
+      crew.add_task(RCrewAI::Task.new(name: tn, description: "do #{tn}",
+                                      expected_output: 'out', agent: crew.agents.first))
+    end
+    crew
+  end
+
+  describe 'hierarchical process' do
+    it 'checkpoints each delegated task' do
+      stub_llm
+      crew = hierarchical_crew
+      crew.execute(checkpoint: store)
+
+      tasks = store.load(crew.run_id)['tasks']
+      expect(tasks.keys).to match_array(%w[t1 t2])
+    end
+
+    it 'skips restored tasks on resume' do
+      stub_llm
+      crew = hierarchical_crew
+      crew.execute(checkpoint: store)
+
+      resumed = hierarchical_crew
+      executed = []
+      resumed.tasks.each do |t|
+        allow(t).to receive(:execute).and_wrap_original do |orig, *args|
+          executed << t.name
+          orig.call(*args)
+        end
+      end
+      resumed.resume(crew.run_id, checkpoint: store)
+
+      expect(executed).to be_empty
+    end
+  end
+
+  describe 'consensual process' do
+    it 'checkpoints each consensus task' do
+      stub_llm
+      crew = consensual_crew
+      crew.execute(checkpoint: store)
+
+      tasks = store.load(crew.run_id)['tasks']
+      expect(tasks.keys).to match_array(%w[t1 t2])
+    end
+
+    it 'skips restored tasks on resume' do
+      stub_llm
+      crew = consensual_crew
+      crew.execute(checkpoint: store)
+
+      resumed = consensual_crew
+      resumed.resume(crew.run_id, checkpoint: store)
+
+      expect(resumed.restored_task_names).to match_array(%w[t1 t2])
+    end
+  end
+end
