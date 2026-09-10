@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-10
+
+Concurrency. Three points where independent, IO-bound work ran in sequence now
+fan out across threads, each bounded and each preserving input order.
+
+| | Before | After |
+|---|---|---|
+| Tool calls in one turn (3 x 150ms) | 0.45s | 0.165s |
+| Consensus with 3 agents | 1.22s | 0.22s |
+
+Entirely additive: no API changes, and every fan-out can be disabled or
+re-bounded. Concurrency is deliberately capped rather than unlimited — an
+unbounded fan-out trades a latency problem for a rate-limit one.
+
 ### Added
 - Parallel tool execution: when a model requests several tools in one turn, `ToolRunner` now runs them concurrently instead of in sequence, so the turn costs the slowest call rather than their sum. Results are collected by index, so the message history stays aligned with the `tool_call` ids regardless of completion order. Bounded by `max_tool_concurrency` (default 8); a single tool call still runs inline with no thread. Disable per agent with `Agent.new(parallel_tools: false)`, or per runner with `ToolRunner.new(parallel_tools: false)`. The legacy `USE_TOOL[]` runner is unaffected — it parses one directive at a time.
 - Tool events emitted from worker threads carry the enclosing run span, so the 0.8.0 event hierarchy stays intact under concurrency.
