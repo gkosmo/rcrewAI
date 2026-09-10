@@ -5,7 +5,7 @@ This roadmap tracks feature parity between **RCrewAI** (Ruby) and the upstream
 
 ## Current status
 
-- **RCrewAI:** `0.7.1` released; `0.8.0`, `0.9.0` and `0.9.x` merged to `main`, unreleased
+- **RCrewAI:** `0.8.1` released; 1.0.0 concurrency work underway on `main`
 - **Upstream crewai:** `1.15.21`
 
 RCrewAI is a faithful port of CrewAI's **"Crews"** mental model (Agents / Tasks /
@@ -57,7 +57,8 @@ is outstanding, and it is blocked on an open decision — see below.
 
 | Concept | crewai | RCrewAI | Plan |
 |---|---|---|---|
-| Native async (LLM + tool level) | ✅ (1.4–1.6) | ⚠️ partial | 1.0.0 |
+| Concurrent tool calls | ✅ (1.4–1.6) | ✅ (#47) | — |
+| Async below the task boundary | ✅ (1.4–1.6) | ⚠️ partial (threads) | 1.0.0 |
 | OTel export for the event hierarchy | ✅ (1.10+) | ❌ | 1.0.x |
 | Streaming for Bedrock / Responses | ✅ | ❌ | 1.0.x |
 | Bedrock SigV4 signing | ✅ | ❌ (hook workaround) | 1.0.x |
@@ -115,24 +116,47 @@ Two deliberate limitations carried forward to 1.0.x: Bedrock does not implement
 SigV4 (a hard `aws-sigv4` dependency for one provider is not worth it; sign via
 a `before_request` hook), and Bedrock/Responses are non-streaming only.
 
-### 1.0.0 — Native async
+### 1.0.0 — Concurrency (in progress)
 
-The largest item, and the one with a genuine architecture decision attached.
-Today `AsyncExecutor` fans tasks out across a `Concurrent::ThreadPoolExecutor` in
-dependency-ordered phases; concurrency stops at the task boundary. CrewAI went
-async *through* the LLM and tool calls (1.4–1.6), covering flows, crews, tasks,
-knowledge, and memory.
+**Decision made: threads, not fibers.** The roadmap previously left this open.
+Prototyping settled it, and not the way the fiber option's low apparent cost
+suggested.
 
-Ruby has no direct port of that. Two candidate models:
+The attraction of fibers was that it looked cheap: keep Faraday, wrap calls in
+`Async`, get non-blocking IO for free. That premise is false on this stack. On
+Ruby 3.1.4 with `async` 2.24.0, a Faraday/`net_http` call inside a fiber
+**never returns** — the task is silently abandoned and the process exits `0` as
+though it succeeded. Raw `Net::HTTP` under `Async` raises `NoMethodError`
+rather than yielding. A first benchmark appeared to show a 1.53s → 0.0s win;
+it was measuring five failed requests that never reached the server.
 
-1. **Fibers** via the `async` gem — closer to upstream's shape, new runtime
-   dependency, and every provider client's HTTP layer has to cooperate.
-2. **Stay on threads** and make the client layer non-blocking — smaller
-   conceptual change, keeps `concurrent-ruby`, less faithful to upstream.
+Making fibers work would mean replacing Faraday with `async-http` across all
+nine provider clients, adding a hard runtime dependency on a stack whose
+observed failure mode is *silent abandonment* — the worst possible behavior in
+an agent framework — and likely raising `required_ruby_version` from `3.0`,
+since this fragility lives exactly in 3.0/3.1 scheduler support.
 
-**This decision is open and blocks the milestone.** It touches all five LLM
-clients either way. The 8.2k lines of `lib/` are backed by 4.9k lines of spec,
-which is what makes a refactor at this depth tractable.
+Threads cost none of that: `concurrent-ruby` is already a dependency, the Ruby
+floor is unchanged, and failures are loud.
+
+Upstream's async/await shape is a Python idiom; porting its *form* rather than
+its *effect* would buy nothing here.
+
+#### Shipped
+
+- **Parallel tool calls** (#47) — a turn's tool calls now run concurrently
+  rather than in sequence, so a turn costs the slowest call rather than their
+  sum (measured: 0.45s → 0.165s for three 150ms tools). Order is preserved by
+  index so the transcript stays aligned with `tool_call` ids, the run span is
+  carried across the thread boundary so the event hierarchy survives, and
+  memory writes are serialized. Bounded by `max_tool_concurrency`; opt out with
+  `Agent.new(parallel_tools: false)`.
+
+#### Remaining
+
+- Concurrent knowledge/embedding lookups, which are IO-bound and independent.
+- Revisit whether anything below the task boundary still blocks unnecessarily
+  once the above lands.
 
 ### Deferred — A2A
 
@@ -147,12 +171,10 @@ no current RCrewAI user has asked for. Revisit once the items above land.
 | 0.8.0 | Interceptors + observability | Low | ✅ merged (#39) |
 | 0.9.0 | Checkpointing | Moderate | ✅ merged (#42) |
 | 0.9.x | Providers, Responses API | Low | ✅ merged (#41) |
-| 1.0.0 | Native async | High — decision open | ⏳ blocked |
+| 1.0.0 | Concurrency (threads) | Moderate | 🔨 in progress |
 
 The three shipped milestones are on `main` and unreleased; they want a version
 bump and a release before or alongside 1.0.0 work.
 
-**1.0.0 is blocked on the fibers-vs-threads decision above.** It is the only
-remaining scheduled work, and the largest single change in this roadmap: it
-touches all nine provider clients and the executor. Nothing else should start
-before that call is made.
+**1.0.0 is underway on the threads model.** The fibers-vs-threads question is
+settled — see the milestone above for the prototype evidence that decided it.
