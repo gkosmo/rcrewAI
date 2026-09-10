@@ -20,8 +20,8 @@ module RCrewAI
         'RECITATION' => :stop
       }.freeze
 
-      def initialize(config = RCrewAI.configuration)
-        super
+      def initialize(config = RCrewAI.configuration, **hooks)
+        super(config, **hooks)
         @base_url = BASE_URL
       end
 
@@ -62,17 +62,25 @@ module RCrewAI
         %w[gemini-pro gemini-1.5-pro gemini-1.5-flash gemini-pro-vision]
       end
 
+      def provider_name
+        :google
+      end
+
       private
 
       def plain_chat(url, payload)
+        payload = apply_before_request(payload)
+        started_at = Time.now
         log_request(:post, url, payload)
         response = http_client.post(url, payload, build_headers)
         log_response(response)
         body = handle_response(response)
-        normalize_non_streaming(body)
+        apply_after_response(normalize_non_streaming(body), started_at)
       end
 
       def stream_chat(url, payload, sink)
+        payload = apply_before_request(payload)
+        started_at = Time.now
         log_request(:post, url, payload)
 
         assembled_text = +''
@@ -123,7 +131,7 @@ module RCrewAI
 
         finish_reason = :tool_calls if tool_calls.any?
 
-        {
+        result = {
           content: assembled_text.empty? ? nil : assembled_text,
           tool_calls: tool_calls,
           usage: usage || {},
@@ -131,6 +139,7 @@ module RCrewAI
           model: config.model,
           provider: :google
         }
+        apply_after_response(result, started_at)
       end
 
       def streaming_post(url, payload, &on_chunk)

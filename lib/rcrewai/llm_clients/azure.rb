@@ -8,8 +8,8 @@ module RCrewAI
     # path with an api-version query param, and authenticates with an api-key
     # header instead of Authorization: Bearer.
     class Azure < OpenAI
-      def initialize(config = RCrewAI.configuration)
-        super
+      def initialize(config = RCrewAI.configuration, **hooks)
+        super(config, **hooks)
         @api_version = config.api_version || '2024-02-01'
         @deployment_name = config.deployment_name || config.model
         @base_url = build_endpoint_url

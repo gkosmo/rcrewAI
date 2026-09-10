@@ -9,11 +9,29 @@ module RCrewAI
     class Base
       attr_reader :config, :logger
 
-      def initialize(config = RCrewAI.configuration)
+      def initialize(config = RCrewAI.configuration, before_request: nil, after_response: nil)
         @config = config
         @logger = Logger.new($stdout)
         @logger.level = Logger::INFO
+        @before_request_hooks = Array(before_request)
+        @after_response_hooks = Array(after_response)
         validate_config!
+      end
+
+      # Registers a hook run just before the request payload is sent.
+      # Receives (payload, context) where context carries :provider and :model.
+      # Returning a payload replaces it; returning nil keeps the original.
+      def before_request(callable = nil, &block)
+        @before_request_hooks << (callable || block)
+        self
+      end
+
+      # Registers a hook run just after a response is normalized.
+      # Receives (result, context) where context adds :duration_ms.
+      # Returning a result replaces it; returning nil keeps the original.
+      def after_response(callable = nil, &block)
+        @after_response_hooks << (callable || block)
+        self
       end
 
       def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options)
@@ -29,6 +47,42 @@ module RCrewAI
       end
 
       protected
+
+      # Threads the payload through every before_request hook. A hook that
+      # raises is reported and skipped -- observability must never break a call.
+      def apply_before_request(payload)
+        return payload if @before_request_hooks.empty?
+
+        ctx = hook_context
+        @before_request_hooks.reduce(payload) do |acc, hook|
+          hook.call(acc, ctx) || acc
+        rescue StandardError => e
+          Kernel.warn "[rcrewai] before_request hook raised: #{e.class}: #{e.message}"
+          acc
+        end
+      end
+
+      # Threads the normalized result through every after_response hook.
+      def apply_after_response(result, started_at)
+        return result if @after_response_hooks.empty?
+
+        ctx = hook_context.merge(duration_ms: ((Time.now - started_at) * 1000).round(3))
+        @after_response_hooks.reduce(result) do |acc, hook|
+          hook.call(acc, ctx) || acc
+        rescue StandardError => e
+          Kernel.warn "[rcrewai] after_response hook raised: #{e.class}: #{e.message}"
+          acc
+        end
+      end
+
+      def hook_context
+        { provider: provider_name, model: config.model }
+      end
+
+      # Providers override this; Base has no wire identity of its own.
+      def provider_name
+        nil
+      end
 
       def validate_config!
         raise ConfigurationError, 'API key is required' unless config.api_key

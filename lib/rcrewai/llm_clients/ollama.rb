@@ -21,8 +21,8 @@ module RCrewAI
         firefunction-v2
       ].freeze
 
-      def initialize(config = RCrewAI.configuration)
-        super
+      def initialize(config = RCrewAI.configuration, **hooks)
+        super(config, **hooks)
         @base_url = config.base_url || ollama_url || DEFAULT_URL
       end
 
@@ -78,17 +78,25 @@ module RCrewAI
         handle_response(response)
       end
 
+      def provider_name
+        :ollama
+      end
+
       private
 
       def plain_chat(url, payload)
+        payload = apply_before_request(payload)
+        started_at = Time.now
         log_request(:post, url, payload)
         response = http_client.post(url, payload, build_headers)
         log_response(response)
         body = handle_response(response)
-        normalize_non_streaming(body)
+        apply_after_response(normalize_non_streaming(body), started_at)
       end
 
       def stream_chat(url, payload, sink)
+        payload = apply_before_request(payload)
+        started_at = Time.now
         log_request(:post, url, payload)
 
         assembled_text = +''
@@ -145,8 +153,14 @@ module RCrewAI
                     ))
         end
 
+        result = stream_result(assembled_text, tool_calls, finish_reason,
+                               prompt_tokens, completion_tokens)
+        apply_after_response(result, started_at)
+      end
+
+      def stream_result(text, tool_calls, finish_reason, prompt_tokens, completion_tokens)
         {
-          content: assembled_text.empty? ? nil : assembled_text,
+          content: text.empty? ? nil : text,
           tool_calls: tool_calls,
           usage: {
             prompt_tokens: prompt_tokens,
