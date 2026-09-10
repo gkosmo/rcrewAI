@@ -7,25 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-10
+
+Closes the feature-parity gap against CrewAI's `1.x` line. Adds **LLM message
+interceptors**, an **event hierarchy** with safe fan-out, **task-level
+checkpointing** with resume and lineage, and **four new providers** (AWS
+Bedrock, Snowflake Cortex, any OpenAI-compatible endpoint, and OpenAI's
+Responses API).
+
+Almost entirely additive. One behavior change — `Events.fan_out` now serializes
+delivery, so stream subscribers no longer need their own mutex; sinks that
+already lock remain correct. See **Changed** below.
+
+Also repairs `bin/rcrewai`, which had never worked in any published version.
+
 ### Added
+
+#### Interceptors & observability
 - LLM message interceptors: `before_request` / `after_response` hooks on every provider client (`LLMClients::Base`), registered via block, callable, or the `before_request:` / `after_response:` constructor kwargs. A `before_request` hook receives `(payload, context)` and may return a replacement payload; an `after_response` hook receives `(result, context)` and may return a replacement result. Returning `nil` keeps the original, so a pure-observer hook needs no return value. `context` carries `:provider` and `:model`, and `after_response` adds `:duration_ms`. Hooks run in registration order, threading the value through. A hook that raises is reported to stderr and skipped — instrumentation never breaks a call. Wired on both the plain and streaming paths of all five providers.
 - Event hierarchy: every `Events::*` event now carries an auto-assigned `:id`, and `:parent_id` naming the enclosing span. `Events.with_parent(id) { ... }` opens a span for the current thread (nesting, restored on exit, and on raise); `Events.emit(sink, event)` stamps the enclosing parent before delivery. Both runners (`ToolRunner`, `LegacyReactRunner`) open a per-run span, so a subscriber can reassemble the flat stream into a tree — what tracing exporters need.
 
-### Fixed
-- `Events.fan_out` now serializes delivery: sinks are invoked under a mutex, so a sink shared by concurrently executing agents is never entered from two threads at once. Previously it called sinks inline on the emitting thread with no serialization, which under `async: true` meant every subscriber had to do its own locking or race — the 0.7.1 notes documented this as a caveat, but for any aggregating subscriber it was a live defect. The lock is reentrant, so a sink that emits back through the same fan-out does not deadlock. Sinks that already lock internally remain correct.
-
-### Changed
-- **Behavior change:** subscribers passed to `crew.execute(stream:)` no longer need their own mutex. Existing sinks that lock are unaffected.
+#### Checkpointing
 - Checkpointing: `crew.execute(checkpoint: store)` records durable per-run state, and `crew.resume(run_id)` replays completed tasks instead of re-executing them. Granularity is task-level — a checkpoint is written after each task settles, so a crash loses at most the task in flight. Failed tasks are recorded as failed rather than omitted, so a resume retries them instead of treating them as never-attempted. Supported on the sequential, hierarchical, and consensual processes.
 - Checkpoint stores follow the existing `Flow::StateStore` shape (`save`/`load`/`list`/`delete`): `Checkpoint::MemoryStore` (volatile) and `Checkpoint::FileStore` (one JSON file per run). `FileStore` rejects run ids containing path separators or traversal segments, since ids arrive both from callers and from stored records.
 - Lineage: a resumed run gets its own run id linked to its parent via `parent_run_id`, leaving the original record intact. `Checkpoint.lineage(store, run_id)` walks the chain back to the root, truncating rather than raising if an ancestor has been pruned.
 - CLI: `rcrewai checkpoint list` / `info RUN_ID` / `delete RUN_ID` inspect saved checkpoints (`--dir`, default `.rcrewai/checkpoints`).
 
+#### Providers
 - New providers: `:openai_compatible` (any endpoint speaking the OpenAI Chat Completions format — Together, Groq, Fireworks, vLLM, LiteLLM, OpenRouter, a self-hosted gateway; requires `base_url`), `:bedrock` (AWS Bedrock via the Converse API, giving every Bedrock model one request shape; requires `aws_region`), and `:snowflake` (Snowflake Cortex inference; requires `snowflake_account`). New configuration attributes `aws_region` and `snowflake_account`, also read from `AWS_REGION`/`AWS_DEFAULT_REGION` and `SNOWFLAKE_ACCOUNT`.
 - `:openai_responses` — OpenAI's Responses API alongside the existing Chat Completions client. Messages go under `input` with the system prompt lifted to `instructions`, `max_tokens` becomes `max_output_tokens`, tools are sent flat rather than nested under `function`, and the `output` array is parsed back into the canonical `content` / `tool_calls` shape. An `incomplete` response capped by `max_output_tokens` is reported as `finish_reason: :length`. Non-streaming only — Responses streams a distinct set of semantic events that this client does not model.
 - `LLMClient::PROVIDERS` — provider resolution is now a table rather than a `case`, so registering a client is a one-line change.
 
+
+### Changed
+- **Behavior change:** subscribers passed to `crew.execute(stream:)` no longer need their own mutex. Existing sinks that lock are unaffected.
+
 ### Fixed
+- `Events.fan_out` now serializes delivery: sinks are invoked under a mutex, so a sink shared by concurrently executing agents is never entered from two threads at once. Previously it called sinks inline on the emitting thread with no serialization, which under `async: true` meant every subscriber had to do its own locking or race — the 0.7.1 notes documented this as a caveat, but for any aggregating subscriber it was a live defect. The lock is reentrant, so a sink that emits back through the same fan-out does not deadlock. Sinks that already lock internally remain correct.
 - `LLMClient.for_provider` silently dropped interceptor hooks: it constructed each client with only the config, so `before_request` / `after_response` passed through the normal resolution path never reached the client. It now forwards them.
 - `bin/rcrewai` never worked. `lib/rcrewai/cli.rb` defined `def run`, which Thor reserves, so the class raised `"run" is a Thor reserved word` on load; the file was consequently never required from `lib/rcrewai.rb`, which hid the breakage from the test suite while `bin/rcrewai` — shipped as a gem executable since the initial commit — crashed for every installed user. The command is now defined as `run_crew` and mapped back to `run`, so the user-facing invocation (`rcrewai run --crew NAME`) is unchanged, and the CLI is required and covered by specs.
 
@@ -36,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tasks retained a reference to the caller's sink after `execute` returned, keeping request-scoped subscribers reachable for the lifetime of the task object. The sink is now cleared in an `ensure`.
 
 ### Note
-- `Events.fan_out` invokes sinks inline on the emitting thread with no serialization, so under `async: true` a sink may be called concurrently from multiple worker threads. Subscribers must do their own locking. **Superseded in `[Unreleased]`:** fan-out now serializes delivery.
+- `Events.fan_out` invokes sinks inline on the emitting thread with no serialization, so under `async: true` a sink may be called concurrently from multiple worker threads. Subscribers must do their own locking. **Superseded in `0.8.0`:** fan-out now serializes delivery.
 
 ## [0.7.0] - 2026-07-07
 
