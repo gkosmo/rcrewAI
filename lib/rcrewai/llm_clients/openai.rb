@@ -13,8 +13,8 @@ module RCrewAI
     class OpenAI < Base
       BASE_URL = 'https://api.openai.com/v1'
 
-      def initialize(config = RCrewAI.configuration)
-        super
+      def initialize(config = RCrewAI.configuration, **hooks)
+        super(config, **hooks)
         @base_url = BASE_URL
       end
 
@@ -49,6 +49,10 @@ module RCrewAI
         true
       end
 
+      def provider_name
+        :openai
+      end
+
       def models
         url = "#{@base_url}/models"
         response = http_client.get(url, {}, build_headers.merge(auth_header))
@@ -64,15 +68,19 @@ module RCrewAI
 
       def plain_chat(payload)
         url = chat_url
+        payload = apply_before_request(payload)
+        started_at = Time.now
         log_request(:post, url, payload)
         response = http_client.post(url, payload, build_headers.merge(auth_header))
         log_response(response)
         body = handle_response(response)
-        normalize_non_streaming(body)
+        apply_after_response(normalize_non_streaming(body), started_at)
       end
 
       def stream_chat(payload, sink) # rubocop:disable Metrics/AbcSize
         url = chat_url
+        payload = apply_before_request(payload)
+        started_at = Time.now
         log_request(:post, url, payload)
 
         assembled_text = +''
@@ -137,18 +145,14 @@ module RCrewAI
                     ))
         end
 
-        {
-          content: assembled_text.empty? ? nil : assembled_text,
-          tool_calls: tool_calls,
-          usage: final_usage || {},
-          finish_reason: finish_reason || :stop,
-          model: config.model,
-          provider: provider_name
-        }
-      end
-
-      def provider_name
-        :openai
+        apply_after_response({
+                               content: assembled_text.empty? ? nil : assembled_text,
+                               tool_calls: tool_calls,
+                               usage: final_usage || {},
+                               finish_reason: finish_reason || :stop,
+                               model: config.model,
+                               provider: provider_name
+                             }, started_at)
       end
 
       def streaming_post(url, payload, &on_chunk)

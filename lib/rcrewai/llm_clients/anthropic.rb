@@ -21,8 +21,8 @@ module RCrewAI
         'max_tokens' => :length
       }.freeze
 
-      def initialize(config = RCrewAI.configuration)
-        super
+      def initialize(config = RCrewAI.configuration, **hooks)
+        super(config, **hooks)
         @base_url = BASE_URL
       end
 
@@ -74,19 +74,27 @@ module RCrewAI
         ]
       end
 
+      def provider_name
+        :anthropic
+      end
+
       private
 
       def plain_chat(payload)
         url = "#{@base_url}/messages"
+        payload = apply_before_request(payload)
+        started_at = Time.now
         log_request(:post, url, payload)
         response = http_client.post(url, payload, build_headers.merge(auth_header))
         log_response(response)
         body = handle_response(response)
-        normalize_non_streaming(body)
+        apply_after_response(normalize_non_streaming(body), started_at)
       end
 
       def stream_chat(payload, sink) # rubocop:disable Metrics/AbcSize,Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity
         url = "#{@base_url}/messages"
+        payload = apply_before_request(payload)
+        started_at = Time.now
         log_request(:post, url, payload)
 
         assembled_text = +''
@@ -150,7 +158,7 @@ module RCrewAI
                     ))
         end
 
-        {
+        result = {
           content: assembled_text.empty? ? nil : assembled_text,
           tool_calls: tool_calls,
           usage: usage,
@@ -158,6 +166,7 @@ module RCrewAI
           model: config.model,
           provider: :anthropic
         }
+        apply_after_response(result, started_at)
       end
 
       def streaming_post(url, payload, &on_chunk)

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'securerandom'
 require_relative 'events'
 
 module RCrewAI
@@ -19,6 +20,12 @@ module RCrewAI
     end
 
     def run(messages:)
+      Events.with_parent(@run_span_id ||= SecureRandom.uuid) { run_loop(messages: messages) }
+    end
+
+    private
+
+    def run_loop(messages:)
       msgs = messages.dup
       history = []
       iter = 0
@@ -57,8 +64,6 @@ module RCrewAI
       finalize(content: final, history: history, iter: iter,
                finish_reason: :max_iterations, usage: total_usage)
     end
-
-    private
 
     # Trims the message list to the model's context window when the agent
     # supports it; a no-op otherwise.
@@ -144,13 +149,13 @@ module RCrewAI
       type_sym = klass.name.split('::').last
                       .gsub(/([A-Z])/) { "_#{Regexp.last_match(1).downcase}" }
                       .sub(/^_/, '').to_sym
-      @sink.call(klass.new(
-                   type: type_sym,
-                   timestamp: Time.now,
-                   agent: @agent.respond_to?(:name) ? @agent.name : nil,
-                   iteration: iteration,
-                   **attrs
-                 ))
+      Events.emit(@sink, klass.new(
+                           type: type_sym,
+                           timestamp: Time.now,
+                           agent: @agent.respond_to?(:name) ? @agent.name : nil,
+                           iteration: iteration,
+                           **attrs
+                         ))
     end
 
     def accumulate_usage(total, partial)
