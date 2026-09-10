@@ -7,14 +7,18 @@ require_relative 'provider_schema'
 module RCrewAI
   class ToolRunner
     DEFAULT_MAX_ITERATIONS = 10
+    DEFAULT_TOOL_CONCURRENCY = 8
 
-    def initialize(agent:, llm:, tools:, max_iterations: DEFAULT_MAX_ITERATIONS, event_sink: nil)
+    def initialize(agent:, llm:, tools:, **opts)
       @agent = agent
       @llm = llm
       @tools = tools
       @tools_by_name = tools.each_with_object({}) { |t, h| h[t.name] = t }
-      @max_iterations = max_iterations
-      @sink = event_sink || ->(_) {}
+      @max_iterations = opts.fetch(:max_iterations, DEFAULT_MAX_ITERATIONS)
+      @sink = opts[:event_sink] || ->(_) {}
+      @parallel_tools = opts.fetch(:parallel_tools, true)
+      @max_tool_concurrency = opts.fetch(:max_tool_concurrency, DEFAULT_TOOL_CONCURRENCY)
+      @tool_usage_lock = Mutex.new
     end
 
     def run(messages:)
@@ -23,7 +27,7 @@ module RCrewAI
 
     private
 
-    def run_loop(messages:) # rubocop:disable Metrics/AbcSize
+    def run_loop(messages:)
       msgs = messages.dup
       history = []
       iter = 0
@@ -48,34 +52,9 @@ module RCrewAI
 
         msgs << { role: 'assistant', content: response[:content], tool_calls: response[:tool_calls] }
 
-        response[:tool_calls].each do |tc|
-          tool = @tools_by_name[tc[:name]]
-          emit(Events::ToolCallStart, iteration: iter,
-                                      tool: tc[:name], args: tc[:arguments], call_id: tc[:id])
-
-          if tool.nil?
-            err = "tool not found: #{tc[:name]}"
-            emit(Events::ToolCallError, iteration: iter,
-                                        tool: tc[:name], call_id: tc[:id], error: err)
-            msgs << tool_result_message(tc[:id], "ERROR: #{err}")
-            next
-          end
-
-          started = monotonic_ms
-          begin
-            result = tool.execute_with_validation(tc[:arguments] || {})
-            duration = monotonic_ms - started
-            @agent.memory.add_tool_usage(tc[:name], tc[:arguments], result) if @agent.respond_to?(:memory) && @agent.memory
-            emit(Events::ToolCallResult, iteration: iter,
-                                         tool: tc[:name], call_id: tc[:id], result: result,
-                                         duration_ms: duration)
-            history << { tool: tc[:name], args: tc[:arguments], result: result, duration_ms: duration }
-            msgs << tool_result_message(tc[:id], result.to_s)
-          rescue StandardError => e
-            emit(Events::ToolCallError, iteration: iter,
-                                        tool: tc[:name], call_id: tc[:id], error: e.message)
-            msgs << tool_result_message(tc[:id], "ERROR: #{e.message}")
-          end
+        run_tool_calls(response[:tool_calls], iter).each do |outcome|
+          history << outcome[:history] if outcome[:history]
+          msgs << outcome[:message]
         end
 
         emit(Events::IterationEnd, iteration: iter, finish_reason: :tool_calls)
@@ -93,6 +72,72 @@ module RCrewAI
 
     def tool_result_message(call_id, content)
       { role: 'tool', tool_call_id: call_id, content: content }
+    end
+
+    # Executes one turn's tool calls, concurrently when there is more than one.
+    #
+    # Models routinely request several independent tools in a single turn;
+    # running them in sequence makes the turn cost the sum of their latencies
+    # rather than the max. Results are collected by index, so the order the
+    # model asked for is preserved no matter which finishes first -- the
+    # message history must stay aligned with the tool_call ids.
+    def run_tool_calls(tool_calls, iter)
+      return tool_calls.map { |tc| execute_tool_call(tc, iter) } unless parallel?(tool_calls)
+
+      # Events are emitted from worker threads, so carry the run span across
+      # the boundary: Events.with_parent is thread-local by design.
+      span = Events.current_parent
+      tool_calls.each_slice(@max_tool_concurrency).flat_map do |slice|
+        slice.map { |tc| Thread.new { Events.with_parent(span) { execute_tool_call(tc, iter) } } }
+             .map(&:value)
+      end
+    end
+
+    def parallel?(tool_calls)
+      @parallel_tools && tool_calls.length > 1
+    end
+
+    # Runs one tool call and returns what the caller should record. Never
+    # raises: a failing tool becomes an ERROR message fed back to the model,
+    # exactly as it did when this ran inline.
+    def execute_tool_call(call, iter)
+      tool = @tools_by_name[call[:name]]
+      emit(Events::ToolCallStart, iteration: iter,
+                                  tool: call[:name], args: call[:arguments], call_id: call[:id])
+
+      if tool.nil?
+        err = "tool not found: #{call[:name]}"
+        emit(Events::ToolCallError, iteration: iter,
+                                    tool: call[:name], call_id: call[:id], error: err)
+        return { message: tool_result_message(call[:id], "ERROR: #{err}") }
+      end
+
+      started = monotonic_ms
+      begin
+        result = tool.execute_with_validation(call[:arguments] || {})
+        duration = monotonic_ms - started
+        record_tool_usage(call, result)
+        emit(Events::ToolCallResult, iteration: iter,
+                                     tool: call[:name], call_id: call[:id], result: result,
+                                     duration_ms: duration)
+        {
+          history: { tool: call[:name], args: call[:arguments], result: result, duration_ms: duration },
+          message: tool_result_message(call[:id], result.to_s)
+        }
+      rescue StandardError => e
+        emit(Events::ToolCallError, iteration: iter,
+                                    tool: call[:name], call_id: call[:id], error: e.message)
+        { message: tool_result_message(call[:id], "ERROR: #{e.message}") }
+      end
+    end
+
+    # Agent memory is shared across the worker threads of one turn.
+    def record_tool_usage(call, result)
+      return unless @agent.respond_to?(:memory) && @agent.memory
+
+      @tool_usage_lock.synchronize do
+        @agent.memory.add_tool_usage(call[:name], call[:arguments], result)
+      end
     end
 
     def emit(klass, iteration:, **attrs)
