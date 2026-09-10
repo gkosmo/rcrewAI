@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Parallel tool execution: when a model requests several tools in one turn, `ToolRunner` now runs them concurrently instead of in sequence, so the turn costs the slowest call rather than their sum. Results are collected by index, so the message history stays aligned with the `tool_call` ids regardless of completion order. Bounded by `max_tool_concurrency` (default 8); a single tool call still runs inline with no thread. Disable per agent with `Agent.new(parallel_tools: false)`, or per runner with `ToolRunner.new(parallel_tools: false)`. The legacy `USE_TOOL[]` runner is unaffected — it parses one directive at a time.
 - Tool events emitted from worker threads carry the enclosing run span, so the 0.8.0 event hierarchy stays intact under concurrency.
+- Concurrent embedding: providers without a batch embeddings endpoint (`:google`, `:ollama`) issued one HTTP request per text, in sequence, so building a knowledge base cost the sum of every chunk's round-trip. Those requests now run concurrently, bounded by `max_concurrency` (default 8, configurable via `Knowledge::Embedder.new(max_concurrency:)`). Vectors are returned in input order, since `Knowledge::Base#build!` zips them back against their chunks positionally. An error in any request propagates rather than yielding a knowledge base with silently missing vectors. `:openai` and `:azure` already batch into a single request and are unchanged.
 
 ## [0.8.1] - 2026-09-10
 
