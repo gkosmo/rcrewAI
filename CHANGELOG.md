@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- LLM message interceptors: `before_request` / `after_response` hooks on every provider client (`LLMClients::Base`), registered via block, callable, or the `before_request:` / `after_response:` constructor kwargs. A `before_request` hook receives `(payload, context)` and may return a replacement payload; an `after_response` hook receives `(result, context)` and may return a replacement result. Returning `nil` keeps the original, so a pure-observer hook needs no return value. `context` carries `:provider` and `:model`, and `after_response` adds `:duration_ms`. Hooks run in registration order, threading the value through. A hook that raises is reported to stderr and skipped — instrumentation never breaks a call. Wired on both the plain and streaming paths of all five providers.
+- Event hierarchy: every `Events::*` event now carries an auto-assigned `:id`, and `:parent_id` naming the enclosing span. `Events.with_parent(id) { ... }` opens a span for the current thread (nesting, restored on exit, and on raise); `Events.emit(sink, event)` stamps the enclosing parent before delivery. Both runners (`ToolRunner`, `LegacyReactRunner`) open a per-run span, so a subscriber can reassemble the flat stream into a tree — what tracing exporters need.
+
+### Fixed
+- `Events.fan_out` now serializes delivery: sinks are invoked under a mutex, so a sink shared by concurrently executing agents is never entered from two threads at once. Previously it called sinks inline on the emitting thread with no serialization, which under `async: true` meant every subscriber had to do its own locking or race — the 0.7.1 notes documented this as a caveat, but for any aggregating subscriber it was a live defect. The lock is reentrant, so a sink that emits back through the same fan-out does not deadlock. Sinks that already lock internally remain correct.
+
+### Changed
+- **Behavior change:** subscribers passed to `crew.execute(stream:)` no longer need their own mutex. Existing sinks that lock are unaffected.
+
 ## [0.7.1] - 2026-08-13
 
 ### Fixed
@@ -14,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tasks retained a reference to the caller's sink after `execute` returned, keeping request-scoped subscribers reachable for the lifetime of the task object. The sink is now cleared in an `ensure`.
 
 ### Note
-- `Events.fan_out` invokes sinks inline on the emitting thread with no serialization, so under `async: true` a sink may be called concurrently from multiple worker threads. Subscribers must do their own locking.
+- `Events.fan_out` invokes sinks inline on the emitting thread with no serialization, so under `async: true` a sink may be called concurrently from multiple worker threads. Subscribers must do their own locking. **Superseded in `[Unreleased]`:** fan-out now serializes delivery.
 
 ## [0.7.0] - 2026-07-07
 
