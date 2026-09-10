@@ -23,6 +23,7 @@ module RCrewAI
       @planning_llm = options[:planning_llm]
       @planned = false
       @consensus_agents = options.fetch(:consensus_agents, 3)
+      @consensus_max_concurrency = options[:consensus_max_concurrency]
       @knowledge = build_knowledge(options[:knowledge], options[:knowledge_sources])
       @before_kickoff_hooks = []
       @after_kickoff_hooks = []
@@ -35,7 +36,8 @@ module RCrewAI
       validate_process_type!
     end
 
-    attr_reader :knowledge, :stream_sink, :last_inputs, :consensus_agents, :run_id
+    attr_reader :knowledge, :stream_sink, :last_inputs, :consensus_agents, :run_id,
+                :consensus_max_concurrency
 
     def planning?
       @planning
