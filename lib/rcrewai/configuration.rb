@@ -6,6 +6,7 @@ module RCrewAI
                   :openai_api_key, :anthropic_api_key, :google_api_key, :azure_api_key,
                   :openai_model, :anthropic_model, :google_model, :azure_model,
                   :base_url, :api_version, :deployment_name,
+                  :aws_region, :snowflake_account,
                   :pricing, :ollama_native_tools, :log_level
 
     def initialize
@@ -20,6 +21,9 @@ module RCrewAI
       @anthropic_model = 'claude-3-sonnet-20240229'
       @google_model = 'gemini-pro'
       @azure_model = 'gpt-4'
+
+      @aws_region = nil
+      @snowflake_account = nil
 
       @pricing = nil
       @ollama_native_tools = nil
@@ -100,6 +104,9 @@ module RCrewAI
       @anthropic_api_key = ENV['ANTHROPIC_API_KEY'] || ENV['CLAUDE_API_KEY']
       @google_api_key = ENV['GOOGLE_API_KEY'] || ENV['GEMINI_API_KEY']
       @azure_api_key = ENV['AZURE_OPENAI_API_KEY']
+
+      @aws_region ||= ENV.fetch('AWS_REGION', nil) || ENV.fetch('AWS_DEFAULT_REGION', nil)
+      @snowflake_account ||= ENV.fetch('SNOWFLAKE_ACCOUNT', nil)
 
       @api_key = ENV['LLM_API_KEY'] if @api_key.nil?
       @base_url = ENV['LLM_BASE_URL'] if @base_url.nil?
