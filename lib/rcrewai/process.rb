@@ -410,6 +410,11 @@ module RCrewAI
     class Consensual < Base
       DEFAULT_CONSENSUS_AGENTS = 3
 
+      # Scoring is quadratic in participants (agents x candidates), so an
+      # unbounded fan-out would put a request per pair in flight at once --
+      # six agents is already 36 concurrent LLM calls. Cap it.
+      DEFAULT_MAX_CONCURRENCY = 8
+
       def execute
         log_execution_start
         @logger.info 'Consensual execution - agents propose, vote, and pick'
@@ -458,21 +463,45 @@ module RCrewAI
         chosen
       end
 
+      # Proposals are independent LLM calls, so they run concurrently: with the
+      # default three agents this turns three sequential round-trips into one.
+      # filter_map order is preserved so ties still break toward the assigned
+      # agent deterministically.
       def gather_proposals(task, participants)
-        participants.filter_map do |agent|
+        bounded_parallel(participants.map { |a| [a] }) do |agent|
           content = extract_content(agent.execute_task(task, stream: crew.stream_sink))
           { agent: agent, content: content }
         rescue StandardError => e
           @logger.warn "Agent #{agent.name} failed to propose: #{e.message}"
           nil
+        end.compact
+      end
+
+      # Every (candidate, voter) pair is an independent LLM call. Scoring is the
+      # quadratic half of consensus -- three agents means nine calls -- so it
+      # fans out over the whole grid rather than per candidate.
+      def score_candidates(task, candidates, participants)
+        pairs = candidates.flat_map { |c| participants.map { |v| [c, v] } }
+        scores = bounded_parallel(pairs) { |c, v| score(v, task, c[:content]) }
+
+        candidates.each_with_index.map do |candidate, i|
+          row = scores[(i * participants.length), participants.length]
+          candidate.merge(score: row.sum)
         end
       end
 
-      def score_candidates(task, candidates, participants)
-        candidates.map do |candidate|
-          total = participants.sum { |voter| score(voter, task, candidate[:content]) }
-          candidate.merge(score: total)
+      # Runs the block over items in bounded parallel, preserving input order.
+      def bounded_parallel(items)
+        span = Events.current_parent
+        items.each_slice(max_concurrency).flat_map do |slice|
+          slice.map { |item| Thread.new { Events.with_parent(span) { yield(*item) } } }
+               .map(&:value)
         end
+      end
+
+      def max_concurrency
+        crew.respond_to?(:consensus_max_concurrency) && crew.consensus_max_concurrency ||
+          DEFAULT_MAX_CONCURRENCY
       end
 
       def score(voter, task, candidate_content)
