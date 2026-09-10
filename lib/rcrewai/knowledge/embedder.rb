@@ -22,9 +22,16 @@ module RCrewAI
       GOOGLE_BASE = 'https://generativelanguage.googleapis.com/v1beta'
       OLLAMA_DEFAULT_URL = 'http://localhost:11434'
 
+      # Providers without a batch embeddings endpoint issue one request per
+      # text. Those are independent and IO-bound, so they run concurrently --
+      # bounded, since a large knowledge base would otherwise open a request
+      # per chunk at once.
+      DEFAULT_MAX_CONCURRENCY = 8
+
       attr_reader :provider, :model
 
-      def initialize(provider: :openai, model: nil, api_key: nil, config: RCrewAI.configuration)
+      def initialize(provider: :openai, model: nil, api_key: nil, config: RCrewAI.configuration,
+                     max_concurrency: DEFAULT_MAX_CONCURRENCY)
         @provider = provider.to_sym
         if @provider == :anthropic
           raise EmbeddingError,
@@ -34,6 +41,7 @@ module RCrewAI
         @config = config
         @model = model || DEFAULT_MODELS[@provider] || DEFAULT_MODELS[:openai]
         @api_key = api_key
+        @max_concurrency = max_concurrency
       end
 
       def embed(texts)
@@ -62,19 +70,29 @@ module RCrewAI
 
       def embed_google(texts)
         key = api_key_for(:google)
-        texts.map do |text|
+        concurrent_map(texts) do |text|
           url = "#{GOOGLE_BASE}/models/#{@model}:embedContent?key=#{key}"
           payload = { model: "models/#{@model}", content: { parts: [{ text: text }] } }
-          body = post_json(url, payload)
-          body.dig('embedding', 'values')
+          post_json(url, payload).dig('embedding', 'values')
         end
       end
 
       def embed_ollama(texts)
         base = @config.base_url || OLLAMA_DEFAULT_URL
-        texts.map do |text|
-          body = post_json("#{base}/api/embeddings", { model: @model, prompt: text })
-          body['embedding']
+        concurrent_map(texts) do |text|
+          post_json("#{base}/api/embeddings", { model: @model, prompt: text })['embedding']
+        end
+      end
+
+      # Maps over texts in bounded parallel, preserving input order: the caller
+      # zips vectors back against their chunks, so completion order must not
+      # leak into the result. An error in any request propagates -- a knowledge
+      # base with silently missing vectors is worse than a failed build.
+      def concurrent_map(texts, &block)
+        return texts.map(&block) if texts.length < 2 || @max_concurrency < 2
+
+        texts.each_slice(@max_concurrency).flat_map do |slice|
+          slice.map { |text| Thread.new { block.call(text) } }.map(&:value)
         end
       end
 
