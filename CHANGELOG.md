@@ -41,6 +41,7 @@ Also repairs `bin/rcrewai`, which had never worked in any published version.
 
 ### Changed
 - **Behavior change:** subscribers passed to `crew.execute(stream:)` no longer need their own mutex. Existing sinks that lock are unaffected.
+- Dropped three unused runtime dependencies: `anthropic`, `ruby-openai` and `faraday-multipart`. Every LLM client talks to Faraday directly and none of these gems was ever required, but they had been declared since `0.3.0`, so each install pulled them plus their transitive dependencies (`event_stream_parser`, `multipart-post`) — seven gems in total. No API change; the Anthropic and OpenAI clients are unaffected.
 
 ### Fixed
 - `Events.fan_out` now serializes delivery: sinks are invoked under a mutex, so a sink shared by concurrently executing agents is never entered from two threads at once. Previously it called sinks inline on the emitting thread with no serialization, which under `async: true` meant every subscriber had to do its own locking or race — the 0.7.1 notes documented this as a caveat, but for any aggregating subscriber it was a live defect. The lock is reentrant, so a sink that emits back through the same fan-out does not deadlock. Sinks that already lock internally remain correct.

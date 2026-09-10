@@ -49,16 +49,13 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   # Runtime dependencies
-  spec.add_dependency 'anthropic', '~> 0.2'
   spec.add_dependency 'concurrent-ruby', '~> 1.2'
   spec.add_dependency 'faraday', '~> 2.7'
-  spec.add_dependency 'faraday-multipart', '~> 1.0'
   spec.add_dependency 'json', '~> 2.6'
   spec.add_dependency 'logger', '~> 1.5'
   spec.add_dependency 'mail', '~> 2.8'
   spec.add_dependency 'nokogiri', '~> 1.15'
   spec.add_dependency 'pdf-reader', '~> 2.11'
-  spec.add_dependency 'ruby-openai', '~> 6.3'
   spec.add_dependency 'sqlite3', '~> 2.0'
   spec.add_dependency 'thor', '~> 1.3'
 
