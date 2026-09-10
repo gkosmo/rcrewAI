@@ -5,7 +5,7 @@ This roadmap tracks feature parity between **RCrewAI** (Ruby) and the upstream
 
 ## Current status
 
-- **RCrewAI:** `0.7.1` (2026-08-13)
+- **RCrewAI:** `0.7.1` released; `0.8.0`, `0.9.0` and `0.9.x` merged to `main`, unreleased
 - **Upstream crewai:** `1.15.21`
 
 RCrewAI is a faithful port of CrewAI's **"Crews"** mental model (Agents / Tasks /
@@ -15,11 +15,12 @@ human-in-the-loop), and it carries CrewAI's second pillar (**Flows**) plus
 **training/testing**. In one area — cognitive memory (semantic recall, SQLite
 persistence, four memory types) — the gem went past what was originally ported.
 
-**Status: behind upstream.** The previous revision of this file declared parity
-"complete" against a matrix that only covered CrewAI through roughly `1.0`
-(October 2025), while quoting `1.15.x` in its header. Everything CrewAI added
-across `1.1`–`1.15` was unmeasured. This revision re-derives the delta and
-schedules the parts of it worth closing.
+**Status: one milestone remaining.** An earlier revision of this file declared
+parity "complete" against a matrix that only covered CrewAI through roughly
+`1.0` (October 2025) while quoting `1.15.x` in its header; everything upstream
+added across `1.1`–`1.15` was unmeasured. That delta was re-derived, and three
+of the four scheduled milestones have since shipped. Only native async (1.0.0)
+is outstanding, and it is blocked on an open decision — see below.
 
 ## Parity matrix
 
@@ -46,17 +47,20 @@ schedules the parts of it worth closing.
 | Lifecycle hooks, batch kickoff, rate limiting | ✅ | ✅ (0.5.0) |
 | Reasoning, context window, multimodal | ✅ | ✅ (0.5.0) |
 | Cognitive memory (semantic, persistent, typed) | ✅ | ✅ (0.6.x) |
+| LLM message interceptor hooks | ✅ | ✅ (0.8.0) |
+| Event hierarchy + safe fan-out | ✅ | ✅ (0.8.0) |
+| Checkpointing (save / resume / lineage) | ✅ | ✅ (0.9.0) |
+| Newer providers (Bedrock, Cortex, OpenAI-compatible) | ✅ | ✅ (0.9.x) |
+| OpenAI Responses API | ✅ | ✅ (0.9.x) |
 
 ### Gaps
 
 | Concept | crewai | RCrewAI | Plan |
 |---|---|---|---|
-| LLM message interceptor hooks | ✅ (1.1–1.3) | ❌ | 0.8.0 |
-| Event hierarchy + observability | ✅ (1.10+) | ❌ | 0.8.0 |
-| Checkpointing (save / fork / lineage) | ✅ (1.10+) | ❌ | 0.9.0 |
-| Newer providers (Cortex, Bedrock v4, OpenAI-compatible) | ✅ | ❌ | 0.9.x |
-| OpenAI Responses API | ✅ (1.7–1.9) | ❌ | 0.9.x |
 | Native async (LLM + tool level) | ✅ (1.4–1.6) | ⚠️ partial | 1.0.0 |
+| OTel export for the event hierarchy | ✅ (1.10+) | ❌ | 1.0.x |
+| Streaming for Bedrock / Responses | ✅ | ❌ | 1.0.x |
+| Bedrock SigV4 signing | ✅ | ❌ (hook workaround) | 1.0.x |
 | A2A (agent-to-agent) | ✅ (1.7–1.9) | ❌ | deferred |
 
 ### Out of scope
@@ -77,40 +81,39 @@ If a Ruby-side need for any of these appears, revisit — but not speculatively.
 
 ## Milestones
 
-### 0.8.0 — Interceptors & observability
+### 0.8.0 — Interceptors & observability ✅ shipped (#39)
 
-These ship together: the interceptor seam is what observability plugs into, and
-the observability work fixes a defect that already exists.
+`before_request` / `after_response` hooks on `LLMClients::Base`, inherited by
+every provider and wired on both the plain and streaming paths. Events gained
+`:id` / `:parent_id` with `Events.with_parent` spans opened per agent run.
 
-**Interceptor hooks.** `before_request` / `after_response` hooks on
-`LLMClients::Base#chat`, so callers can inspect, log, or rewrite requests and
-responses without subclassing a provider. Small (the seam is a single method on
-one base class, inherited by all five providers) and independently useful.
+`Events.fan_out` now serializes delivery under a reentrant mutex, fixing a live
+race: it previously called sinks inline on the emitting thread, so under
+`async: true` an aggregating subscriber was entered from several pool workers at
+once. **Behavior change:** subscribers no longer need their own mutex.
 
-**Event hierarchy + thread-safe fan-out.** `Events.fan_out` currently invokes
-sinks inline on the emitting thread with no serialization, so under `async: true`
-a sink may be called concurrently from several worker threads — the 0.7.1
-CHANGELOG documents this as a caveat, but for any subscriber that aggregates it
-is a live race. Give events parent/child structure (matching CrewAI's 1.x event
-system) and make fan-out safe, closing the gap and the defect in one change.
-Optional OpenTelemetry export sits behind this as a **non-required** dependency.
+### 0.9.0 — Checkpointing ✅ shipped (#42)
 
-### 0.9.0 — Checkpointing
+Task-level `crew.execute(checkpoint: store)` / `crew.resume(run_id)` across the
+sequential, hierarchical and consensual processes, with `MemoryStore` and
+`FileStore` following the `Flow::StateStore` shape. Resumed runs link to their
+parent via `parent_run_id`; `Checkpoint.lineage` walks the chain to the root.
+CLI: `rcrewai checkpoint list|info|delete`.
 
-Save / restore / fork of execution state with lineage tracking, plus CLI
-commands to list and inspect checkpoints. Much of the machinery exists:
-`Flow::StateStore` already defines the pluggable `#save(id, hash)` / `#load(id)`
-interface with in-memory and file-backed implementations, and
-`Memory::SqliteStore` establishes the persistence pattern. The work is extending
-state capture from flow state to crew/task execution state.
+Also repaired `bin/rcrewai`, which had never worked: `lib/rcrewai/cli.rb`
+defined `def run`, a Thor reserved word, so the class raised on load and the
+file was never required — hiding the breakage from the suite while the shipped
+gem executable crashed for every installed user.
 
-### 0.9.x — Providers & Responses API
+### 0.9.x — Providers & Responses API ✅ shipped (#41)
 
-Mechanical, well-bounded, no design risk — follows the existing
-`LLMClients::Base` pattern:
+`:openai_compatible`, `:bedrock` (Converse v4), `:snowflake` (Cortex) and
+`:openai_responses`. Provider resolution moved to a `LLMClient::PROVIDERS`
+table, which also fixed `for_provider` silently dropping interceptor hooks.
 
-- Snowflake Cortex, Bedrock v4, and a generic OpenAI-compatible client.
-- OpenAI Responses API shape alongside the current Chat Completions clients.
+Two deliberate limitations carried forward to 1.0.x: Bedrock does not implement
+SigV4 (a hard `aws-sigv4` dependency for one provider is not worth it; sign via
+a `before_request` hook), and Bedrock/Responses are non-streaming only.
 
 ### 1.0.0 — Native async
 
@@ -139,12 +142,17 @@ no current RCrewAI user has asked for. Revisit once the items above land.
 
 ## Sequencing
 
-| Milestone | Contents | Risk |
-|---|---|---|
-| 0.8.0 | Interceptors + observability | Low — additive, fixes a live bug |
-| 0.9.0 | Checkpointing | Moderate — new capability, existing patterns |
-| 0.9.x | Providers, Responses API | Low — mechanical |
-| 1.0.0 | Native async | High — architecture decision open |
+| Milestone | Contents | Risk | Status |
+|---|---|---|---|
+| 0.8.0 | Interceptors + observability | Low | ✅ merged (#39) |
+| 0.9.0 | Checkpointing | Moderate | ✅ merged (#42) |
+| 0.9.x | Providers, Responses API | Low | ✅ merged (#41) |
+| 1.0.0 | Native async | High — decision open | ⏳ blocked |
 
-0.8.0 first regardless of what follows: it is the smallest increment that ships
-a real bug fix, and it de-risks everything after it.
+The three shipped milestones are on `main` and unreleased; they want a version
+bump and a release before or alongside 1.0.0 work.
+
+**1.0.0 is blocked on the fibers-vs-threads decision above.** It is the only
+remaining scheduled work, and the largest single change in this roadmap: it
+touches all nine provider clients and the executor. Nothing else should start
+before that call is made.
