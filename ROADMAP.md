@@ -139,6 +139,12 @@ since this fragility lives exactly in 3.0/3.1 scheduler support.
 Threads cost none of that: `concurrent-ruby` is already a dependency, the Ruby
 floor is unchanged, and failures are loud.
 
+**Update (2026-10):** the fiber failure is specific to Ruby 3.0/3.1. On Ruby
+3.3 with `async` 2.46, Net::HTTP streaming inside a fiber yields to the
+reactor correctly (`spec/anthropic_live_streaming_spec.rb` asserts a 10 ms
+ticker never stalls, and that stopping the task closes the stream). Threads
+stay the internal concurrency model; fiber callers on 3.2+ are supported.
+
 Upstream's async/await shape is a Python idiom; porting its *form* rather than
 its *effect* would buy nothing here.
 
