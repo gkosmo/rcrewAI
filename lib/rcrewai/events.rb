@@ -17,7 +17,8 @@ module RCrewAI
     ToolCallResult  = Struct.new(*BASE_ATTRS, :tool, :call_id, :result, :duration_ms, keyword_init: true)
     ToolCallError   = Struct.new(*BASE_ATTRS, :tool, :call_id, :error,                keyword_init: true)
     Thinking        = Struct.new(*BASE_ATTRS, :text,                                  keyword_init: true)
-    Usage           = Struct.new(*BASE_ATTRS, :prompt_tokens, :completion_tokens, :total_tokens, :cost_usd, keyword_init: true)
+    Usage           = Struct.new(*BASE_ATTRS, :prompt_tokens, :completion_tokens, :total_tokens, :cost_usd,
+                                 :cached_tokens, keyword_init: true)
     IterationStart  = Struct.new(*BASE_ATTRS, :iteration_index,                       keyword_init: true)
     IterationEnd    = Struct.new(*BASE_ATTRS, :finish_reason,                         keyword_init: true)
     Error           = Struct.new(*BASE_ATTRS, :error,                                 keyword_init: true)

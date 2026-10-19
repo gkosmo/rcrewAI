@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Anthropic live streaming for real-time callers (voice agents):
+  - `RCrewAI::CancelToken`: pass `cancel:` to `chat`; `cancel!` aborts the
+    stream at the next chunk, closes the connection and raises
+    `RCrewAI::StreamCancelled`. Under an Async reactor, stopping the calling
+    task does the same.
+  - Streaming requests reuse one keep-alive connection per client
+    (`RCrewAI::PersistentHTTP`), so back-to-back turns skip TCP/TLS setup.
+  - `chat(model:)` overrides the configured model per call.
+  - Usage now carries `cached_tokens` (Anthropic `cache_read_input_tokens`)
+    in the result hash and on the `Events::Usage` stream event.
+- The Anthropic client honours `config.base_url`.
+
+### Notes
+- Verified fiber-safe on Ruby >= 3.2 / async 2.x: Anthropic streaming inside an
+  Async reactor never blocks other fibers (spec covers it, skipped < 3.2).
+
 ## [0.9.0] - 2026-09-10
 
 Concurrency. Three points where independent, IO-bound work ran in sequence now

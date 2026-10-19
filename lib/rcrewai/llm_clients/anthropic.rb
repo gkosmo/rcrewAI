@@ -7,6 +7,8 @@ require_relative '../events'
 require_relative '../sse_parser'
 require_relative '../provider_schema'
 require_relative '../pricing'
+require_relative '../cancel_token'
+require_relative '../persistent_http'
 
 module RCrewAI
   module LLMClients
@@ -23,7 +25,7 @@ module RCrewAI
 
       def initialize(config = RCrewAI.configuration, **hooks)
         super(config, **hooks)
-        @base_url = BASE_URL
+        @base_url = config.base_url || BASE_URL
       end
 
       def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options)
@@ -31,7 +33,7 @@ module RCrewAI
         non_system = messages.reject { |m| m.is_a?(Hash) && m[:role] == 'system' }
 
         payload = {
-          model: config.model,
+          model: options[:model] || config.model,
           messages: format_messages(non_system),
           max_tokens: options[:max_tokens] || config.max_tokens || 1000,
           temperature: options[:temperature] || config.temperature
@@ -57,7 +59,7 @@ module RCrewAI
 
         if stream
           payload[:stream] = true
-          stream_chat(payload, stream)
+          stream_chat(payload, stream, cancel: options[:cancel])
         else
           plain_chat(payload)
         end
@@ -91,7 +93,7 @@ module RCrewAI
         apply_after_response(normalize_non_streaming(body), started_at)
       end
 
-      def stream_chat(payload, sink) # rubocop:disable Metrics/AbcSize,Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity
+      def stream_chat(payload, sink, cancel: nil) # rubocop:disable Metrics/AbcSize,Metrics/CyclomaticComplexity,Metrics/PerceivedComplexity,Metrics/MethodLength
         url = "#{@base_url}/messages"
         payload = apply_before_request(payload)
         started_at = Time.now
@@ -102,6 +104,7 @@ module RCrewAI
         blocks = {}
         finish_reason = nil
         prompt_tokens = nil
+        cached_tokens = nil
         completion_tokens = nil
 
         parser = SSEParser.new do |sse|
@@ -109,6 +112,7 @@ module RCrewAI
           case data['type']
           when 'message_start'
             prompt_tokens = data.dig('message', 'usage', 'input_tokens')
+            cached_tokens = data.dig('message', 'usage', 'cache_read_input_tokens')
           when 'content_block_start'
             cb = data['content_block'] || {}
             blocks[data['index']] = { id: cb['id'], name: cb['name'], arguments: +'' } if cb['type'] == 'tool_use'
@@ -131,7 +135,7 @@ module RCrewAI
           end
         end
 
-        streaming_post(url, payload) { |chunk| parser.feed(chunk) }
+        streaming_post(payload, cancel: cancel) { |chunk| parser.feed(chunk) }
 
         tool_calls = blocks.values.map do |b|
           {
@@ -144,15 +148,16 @@ module RCrewAI
         usage = {
           prompt_tokens: prompt_tokens,
           completion_tokens: completion_tokens,
-          total_tokens: (prompt_tokens || 0) + (completion_tokens || 0)
+          total_tokens: (prompt_tokens || 0) + (completion_tokens || 0),
+          cached_tokens: cached_tokens
         }
 
         if prompt_tokens || completion_tokens
           sink.call(Events::Usage.new(
                       type: :usage, timestamp: Time.now, agent: nil, iteration: nil,
                       prompt_tokens: prompt_tokens, completion_tokens: completion_tokens,
-                      total_tokens: usage[:total_tokens],
-                      cost_usd: Pricing.cost_for(config.model,
+                      total_tokens: usage[:total_tokens], cached_tokens: cached_tokens,
+                      cost_usd: Pricing.cost_for(payload[:model],
                                                  prompt_tokens: prompt_tokens || 0,
                                                  completion_tokens: completion_tokens || 0)
                     ))
@@ -163,23 +168,25 @@ module RCrewAI
           tool_calls: tool_calls,
           usage: usage,
           finish_reason: finish_reason || :stop,
-          model: config.model,
+          model: payload[:model],
           provider: :anthropic
         }
         apply_after_response(result, started_at)
       end
 
-      def streaming_post(url, payload, &on_chunk)
-        conn = Faraday.new do |f|
-          f.request :json
-          f.options.timeout = config.timeout
-          f.adapter Faraday.default_adapter
-        end
-        conn.post(url) do |req|
-          req.headers = build_headers.merge(auth_header)
-          req.body = payload.to_json
-          req.options.on_data = proc { |chunk, _| on_chunk.call(chunk) }
-        end
+      # Streams over one kept-alive connection per client (see PersistentHTTP).
+      def streaming_post(payload, cancel: nil, &on_chunk)
+        uri = URI("#{@base_url}/messages")
+        response = streaming_connection.post_stream(
+          uri.request_uri, headers: build_headers.merge(auth_header), body: payload.to_json, cancel: cancel, &on_chunk
+        )
+        return response if response.is_a?(Net::HTTPSuccess)
+
+        handle_response(Struct.new(:status, :body).new(response.code.to_i, response.body))
+      end
+
+      def streaming_connection
+        @streaming_connection ||= PersistentHTTP.new(@base_url, timeout: config.timeout)
       end
 
       def normalize_non_streaming(body)
