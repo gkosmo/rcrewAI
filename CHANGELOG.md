@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Anthropic client honours `config.base_url`.
 
 ### Notes
-- Verified fiber-safe on Ruby 3.3 / async 2.46: Anthropic streaming inside an
+- Verified fiber-safe on Ruby >= 3.2 / async 2.x: Anthropic streaming inside an
   Async reactor never blocks other fibers (spec covers it, skipped < 3.2).
 
 ## [0.9.0] - 2026-09-10

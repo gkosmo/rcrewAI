@@ -48,6 +48,13 @@ RSpec.describe RCrewAI::LLMClients::Anthropic, 'live streaming' do
     expect(server.requests.last[:body]['model']).to eq('claude-other')
   end
 
+  it 'prices the usage event for the per-call model' do
+    events = []
+    client.chat(messages: messages, stream: ->(e) { events << e }, model: 'claude-haiku-4-5')
+    expected = RCrewAI::Pricing.cost_for('claude-haiku-4-5', prompt_tokens: 50, completion_tokens: 10)
+    expect(events.grep(RCrewAI::Events::Usage).last.cost_usd).to eq(expected)
+  end
+
   it 'passes pre-built system blocks (with cache_control) through untouched' do
     system = [{ type: 'text', text: 'You are Seneca.', cache_control: { type: 'ephemeral' } }]
     client.chat(messages: [{ role: 'system', content: system }, *messages], stream: ->(_) {})

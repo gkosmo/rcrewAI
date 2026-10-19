@@ -10,7 +10,7 @@ class FakeSSEServer
   attr_reader :port, :connections, :requests, :aborted
 
   def initialize(deltas:, delay: 0.01, usage: { 'input_tokens' => 50, 'cache_read_input_tokens' => 40,
-                                                 'cache_creation_input_tokens' => 0, 'output_tokens' => 1 })
+                                                'cache_creation_input_tokens' => 0, 'output_tokens' => 1 })
     @deltas = deltas
     @delay = delay
     @usage = usage

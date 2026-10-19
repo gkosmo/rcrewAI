@@ -157,7 +157,7 @@ module RCrewAI
                       type: :usage, timestamp: Time.now, agent: nil, iteration: nil,
                       prompt_tokens: prompt_tokens, completion_tokens: completion_tokens,
                       total_tokens: usage[:total_tokens], cached_tokens: cached_tokens,
-                      cost_usd: Pricing.cost_for(config.model,
+                      cost_usd: Pricing.cost_for(payload[:model],
                                                  prompt_tokens: prompt_tokens || 0,
                                                  completion_tokens: completion_tokens || 0)
                     ))
