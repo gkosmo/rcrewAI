@@ -45,6 +45,13 @@ RSpec.describe RCrewAI::Configuration do
       expect(config.api_key).to eq('anthropic-key')
     end
 
+    it 'shares the OpenAI api key with the Responses provider' do
+      config.llm_provider = :openai_responses
+      config.openai_api_key = 'openai-key'
+
+      expect(config.api_key).to eq('openai-key')
+    end
+
     it 'falls back to generic api_key' do
       config.llm_provider = :openai
       config.instance_variable_set(:@api_key, 'generic-key')
@@ -72,6 +79,45 @@ RSpec.describe RCrewAI::Configuration do
 
       expect(config.model).to eq('generic-model')
     end
+
+    it 'honours config.model over the provider default' do
+      %i[openai anthropic google azure].each do |provider|
+        config = described_class.new
+        config.llm_provider = provider
+        config.model = 'my-model'
+
+        expect(config.model).to eq('my-model')
+      end
+    end
+
+    it 'honours config.model regardless of assignment order' do
+      config.model = 'my-model'
+      config.llm_provider = :anthropic
+
+      expect(config.model).to eq('my-model')
+    end
+
+    it 'prefers an explicit provider model over config.model' do
+      config.model = 'generic-model'
+      config.openai_model = 'specific-model'
+
+      expect(config.model).to eq('specific-model')
+    end
+
+    it 'shares OpenAI model settings with the Responses provider' do
+      config.llm_provider = :openai_responses
+      expect(config.model).to eq(described_class::DEFAULT_MODELS[:openai])
+
+      config.openai_model = 'gpt-5'
+      expect(config.model).to eq('gpt-5')
+    end
+
+    it 'falls back to the provider default when nothing is set' do
+      config.llm_provider = :anthropic
+
+      expect(config.model).to eq(config.anthropic_model)
+      expect(config.model).to eq(described_class::DEFAULT_MODELS[:anthropic])
+    end
   end
 
   describe '#validate!' do
@@ -82,9 +128,21 @@ RSpec.describe RCrewAI::Configuration do
       config.llm_provider = :openai
       expect { config.validate! }.to raise_error(RCrewAI::ConfigurationError, /API key must be set/)
 
-      config.openai_api_key = 'test-key'
-      config.instance_variable_set(:@model, nil)
-      config.instance_variable_set(:@openai_model, nil)
+      config.llm_provider = :bedrock
+      config.api_key = 'test-key'
+      expect { config.validate! }.to raise_error(RCrewAI::ConfigurationError, /Model must be set/)
+    end
+
+    it 'does not require an API key for ollama' do
+      config.llm_provider = :ollama
+      config.model = 'llama3.1'
+
+      expect { config.validate! }.not_to raise_error
+    end
+
+    it 'still requires a model for ollama' do
+      config.llm_provider = :ollama
+
       expect { config.validate! }.to raise_error(RCrewAI::ConfigurationError, /Model must be set/)
     end
 
@@ -99,7 +157,8 @@ RSpec.describe RCrewAI::Configuration do
 
   describe '#supported_providers' do
     it 'returns all supported providers' do
-      expect(config.supported_providers).to eq(%i[openai anthropic google azure ollama])
+      expect(config.supported_providers).to eq(RCrewAI::LLMClient::PROVIDERS.keys)
+      expect(config.supported_providers).to include(:bedrock, :snowflake, :openai_compatible, :openai_responses)
     end
   end
 
@@ -146,6 +205,28 @@ RSpec.describe RCrewAI::Configuration do
       overridden = base.with_overrides(provider: :anthropic, api_key: 'per-agent-key')
 
       expect(overridden.api_key).to eq('per-agent-key')
+    end
+
+    it 'does not carry a global config.model across to another provider' do
+      base.model = 'gpt-4o'
+
+      expect(base.with_overrides(provider: :anthropic).model).to eq(described_class::DEFAULT_MODELS[:anthropic])
+    end
+
+    it 'keeps a global config.model when the provider is unchanged' do
+      base.model = 'gpt-4o'
+
+      expect(base.with_overrides(provider: :openai).model).to eq('gpt-4o')
+      expect(base.with_overrides(temperature: 0.9).model).to eq('gpt-4o')
+    end
+
+    it 'applies a per-agent model on the Responses provider over the global OpenAI model' do
+      base.openai_model = 'gpt-4o'
+
+      overridden = base.with_overrides(provider: :openai_responses, model: 'gpt-5')
+
+      expect(overridden.model).to eq('gpt-5')
+      expect(base.openai_model).to eq('gpt-4o')
     end
 
     it 'overrides temperature' do

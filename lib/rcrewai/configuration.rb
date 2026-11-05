@@ -2,25 +2,33 @@
 
 module RCrewAI
   class Configuration
+    # Used when neither +<provider>_model+ nor +model+ has been set.
+    DEFAULT_MODELS = {
+      openai: 'gpt-4',
+      anthropic: 'claude-3-sonnet-20240229',
+      google: 'gemini-pro',
+      azure: 'gpt-4'
+    }.freeze
+
+    # Providers that authenticate some other way, or not at all.
+    KEYLESS_PROVIDERS = %i[ollama].freeze
+
     attr_accessor :llm_provider, :api_key, :model, :temperature, :max_tokens, :timeout,
                   :openai_api_key, :anthropic_api_key, :google_api_key, :azure_api_key,
-                  :openai_model, :anthropic_model, :google_model, :azure_model,
                   :base_url, :api_version, :deployment_name,
                   :aws_region, :snowflake_account,
                   :pricing, :ollama_native_tools, :log_level
+    attr_writer :openai_model, :anthropic_model, :google_model, :azure_model
+
+    DEFAULT_MODELS.each do |provider, default|
+      define_method("#{provider}_model") { instance_variable_get("@#{provider}_model") || default }
+    end
 
     def initialize
       @llm_provider = :openai
-      @model = 'gpt-4'
       @temperature = 0.1
       @max_tokens = 4000
       @timeout = 120
-
-      # Default models for each provider
-      @openai_model = 'gpt-4'
-      @anthropic_model = 'claude-3-sonnet-20240229'
-      @google_model = 'gemini-pro'
-      @azure_model = 'gpt-4'
 
       @aws_region = nil
       @snowflake_account = nil
@@ -35,7 +43,7 @@ module RCrewAI
 
     def api_key
       case @llm_provider
-      when :openai
+      when :openai, :openai_responses
         @openai_api_key || @api_key
       when :anthropic
         @anthropic_api_key || @api_key
@@ -48,19 +56,12 @@ module RCrewAI
       end
     end
 
+    # Resolution order: an explicit +<provider>_model+, then +model+, then the
+    # provider's default. Providers without a default must be given a model.
     def model
-      case @llm_provider
-      when :openai
-        @openai_model || @model
-      when :anthropic
-        @anthropic_model || @model
-      when :google
-        @google_model || @model
-      when :azure
-        @azure_model || @model
-      else
-        @model
-      end
+      family = model_family(@llm_provider)
+      explicit = instance_variable_get("@#{family}_model") if DEFAULT_MODELS.key?(family)
+      explicit || @model || DEFAULT_MODELS[family]
     end
 
     # Returns a copy of this configuration with the given per-agent overrides
@@ -73,7 +74,12 @@ module RCrewAI
       copy.llm_provider = provider.to_sym if provider
       target = copy.llm_provider
 
-      copy.public_send("#{target}_model=", model) if model && copy.respond_to?("#{target}_model=")
+      # A global +model+ names a model on the global provider; it must not
+      # follow an agent that switches to a different one.
+      copy.model = nil if target != llm_provider
+
+      family = model_family(target)
+      copy.public_send("#{family}_model=", model) if model && copy.respond_to?("#{family}_model=")
       copy.model = model if model
 
       copy.public_send("#{target}_api_key=", api_key) if api_key && copy.respond_to?("#{target}_api_key=")
@@ -85,12 +91,12 @@ module RCrewAI
 
     def validate!
       raise ConfigurationError, 'LLM provider must be set' if @llm_provider.nil?
-      raise ConfigurationError, "API key must be set for #{@llm_provider}" if api_key.nil? || api_key.empty?
+      raise ConfigurationError, "API key must be set for #{@llm_provider}" if api_key_missing?
       raise ConfigurationError, "Model must be set for #{@llm_provider}" if model.nil? || model.empty?
     end
 
     def supported_providers
-      %i[openai anthropic google azure ollama]
+      LLMClient::PROVIDERS.keys
     end
 
     def provider_supported?(provider)
@@ -98,6 +104,15 @@ module RCrewAI
     end
 
     private
+
+    # The Responses API is OpenAI under another request shape: same models, same key.
+    def model_family(provider)
+      provider == :openai_responses ? :openai : provider
+    end
+
+    def api_key_missing?
+      !KEYLESS_PROVIDERS.include?(@llm_provider.to_sym) && (api_key.nil? || api_key.empty?)
+    end
 
     def load_from_env
       @openai_api_key = ENV['OPENAI_API_KEY']
