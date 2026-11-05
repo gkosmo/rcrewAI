@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-05
+
 **Breaking:** an agent with `require_approval_for_tools: true` now runs no tool without an explicit yes. Unattended runs that relied on the old behaviour will have their tool calls refused until you give the agent an `approval_handler`. Agents that don't set the option are unaffected.
 
 ### Security
 - **`require_approval_for_tools` was not enforced during task runs.** The check lived only in `Agent#use_tool`, which task runs don't call, so `ToolRunner` and `LegacyReactRunner` ran every tool without asking. All tool execution now goes through `RCrewAI::ToolExecution`, including `use_tool` and its retries after a failure.
 - **Without a terminal, approvals answered themselves.** `HumanInput` returned `yes` for approvals and confirmations, so a background job approved its own actions. They are now refused.
 - **Terminal approval answers matched as substrings.** `deny` contains `y`, so it counted as yes, as did `not ok` and anything not starting with `n`. The whole answer must now be an approval keyword (`yes`, `y`, `approve`, `ok`, `continue`, or your `approval_keywords`). Anything else is a refusal.
+
+### Known issues
+- `require_approval_for_final_answer` is documented but not enforced: nothing calls its check, so final answers aren't held for approval. Don't rely on it for oversight.
+- The legacy runner ends after the first tool turn when a provider reports `finish_reason: :stop`, so a tool's result may not reach the model. Refusals are handled.
 
 ### Added
 - `approval_handler:` on `Agent`, and `config.approval_handler` as a global default. A handler receives an `RCrewAI::ToolApproval::Request` with `tool_name` and `arguments`, and answers `true`, `RCrewAI::ToolApproval.approve` or `RCrewAI::ToolApproval.refuse(reason)`. Any other answer, an exception or a timeout is a refusal. To keep the old unattended behaviour on purpose, pass `approval_handler: ->(_) { true }`.
