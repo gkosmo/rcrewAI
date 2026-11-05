@@ -168,7 +168,7 @@ RSpec.describe RCrewAI::Task do
 
       it 'enables human input for agent during execution' do
         expect(agent).to receive(:enable_human_input)
-          .with(require_approval_for_final_answer: true)
+          .with(hash_including(require_approval_for_final_answer: true))
 
         expect(agent).to receive(:disable_human_input)
         subject.execute

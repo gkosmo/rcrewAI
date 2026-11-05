@@ -20,7 +20,7 @@ module RCrewAI
     # ToolCallStart, Requested, Decided, then ToolCallError: it never gets a result.
     ToolApprovalRequested = Struct.new(*BASE_ATTRS, :tool, :args, :call_id, keyword_init: true)
     ToolApprovalDecided   = Struct.new(*BASE_ATTRS, :tool, :args, :call_id, :approved, :reason, keyword_init: true)
-    Thinking        = Struct.new(*BASE_ATTRS, :text,                                  keyword_init: true)
+    Thinking        = Struct.new(*BASE_ATTRS, :text, keyword_init: true)
     Usage           = Struct.new(*BASE_ATTRS, :prompt_tokens, :completion_tokens, :total_tokens, :cost_usd,
                                  :cached_tokens, keyword_init: true)
     IterationStart  = Struct.new(*BASE_ATTRS, :iteration_index,                       keyword_init: true)
