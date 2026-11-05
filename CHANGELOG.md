@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Behavior change:** `disable_human_input` no longer turns approval off, and neither does `enable_human_input` unless you pass `require_approval_for_tools: false`. `Task` with `human_input: true` used to clear the setting on its agent for good. Use `agent.require_approval_for_tools = false` to turn it off.
 - **Behavior change:** without a terminal, `HumanInput` no longer invents answers. `request_input`, `request_choice`, `request_review` and `get_feedback` return `nil` values with `no_response: true`. `Flow#human_feedback` returns `nil` instead of `"Default response - non-interactive mode"`, a `Task` with `require_confirmation` is cancelled, and a failed tool in `use_tool` raises its own error instead of retrying.
 - An empty answer no longer selects the first option in `request_choice`.
+- **Behavior change:** `:openai` and `:azure` now default to `gpt-4o`. OpenAI shut `gpt-4` down on 2026-10-23, so the old default no longer works. Set `openai_model` to a newer model if you can: `gpt-4o` shuts down on 2027-01-14.
+
+### Fixed
+- Cost tracking now knows `claude-fable-5`, and charges `claude-haiku-5-5` its higher rate for prompts over 100K tokens. It under-reported those before.
 
 ## [0.11.0] - 2026-11-05
 

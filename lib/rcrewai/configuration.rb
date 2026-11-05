@@ -6,10 +6,10 @@ module RCrewAI
   class Configuration
     # Used when neither +<provider>_model+ nor +model+ has been set.
     DEFAULT_MODELS = {
-      openai: 'gpt-4',
+      openai: 'gpt-4o',
       anthropic: 'claude-opus-5-5',
       google: 'gemini-3.8-flash',
-      azure: 'gpt-4'
+      azure: 'gpt-4o'
     }.freeze
 
     # Sent by providers that take a temperature when none has been set. The

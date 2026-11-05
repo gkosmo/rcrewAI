@@ -17,6 +17,7 @@ module RCrewAI
       'gpt-4' => 8_192,
       'gpt-3.5-turbo' => 16_385,
       'claude-fable-5-1' => 1_000_000,
+      'claude-fable-5' => 1_000_000,
       'claude-opus-5-5' => 1_000_000,
       'claude-opus-5' => 1_000_000,
       'claude-opus-4-8' => 1_000_000,
