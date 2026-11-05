@@ -10,6 +10,8 @@ require_relative 'tools/base'
 require_relative 'tool_runner'
 require_relative 'legacy_react_runner'
 require_relative 'human_input'
+require_relative 'tool_approval'
+require_relative 'tool_execution'
 
 module RCrewAI
   class Agent
@@ -18,7 +20,9 @@ module RCrewAI
     attr_reader :name, :role, :goal, :backstory, :tools, :memory, :llm_client, :knowledge, :rate_limiter
     attr_accessor :verbose, :allow_delegation, :max_iterations, :max_execution_time, :manager
     # Set by the crew so agents see shared knowledge in addition to their own.
-    attr_writer :crew_knowledge
+    attr_writer :crew_knowledge, :require_approval_for_tools
+    # See ToolApproval. Falls back to config.approval_handler, then the terminal.
+    attr_writer :approval_handler
 
     def initialize(name:, role:, goal:, backstory: nil, tools: [], **options)
       @name = name
@@ -34,6 +38,9 @@ module RCrewAI
       @human_input_enabled = options.fetch(:human_input, false)
       @require_approval_for_tools = options.fetch(:require_approval_for_tools, false)
       @require_approval_for_final_answer = options.fetch(:require_approval_for_final_answer, false)
+      @approval_handler = options[:approval_handler]
+      @approval_timeout = options[:approval_timeout]
+      @approval_lock = Mutex.new
       @logger = Logger.new($stdout)
       @logger.level = verbose ? Logger::DEBUG : Logger::INFO
       @reasoning = options.fetch(:reasoning, false)
@@ -89,7 +96,18 @@ module RCrewAI
     end
 
     def require_approval_for_tools?
-      @require_approval_for_tools && @human_input_enabled
+      @require_approval_for_tools == true
+    end
+
+    # Asks the approval handler about one tool call and returns a
+    # ToolApproval::Decision. Never raises and never answers yes by itself: a
+    # handler that fails or runs out of time is a refusal. One at a time, so
+    # parallel tool calls each get their own answer.
+    def decide_tool_approval(request)
+      timeout = @approval_timeout || RCrewAI.configuration.approval_timeout || ToolApproval::DEFAULT_TIMEOUT
+      request.timeout = timeout
+      handler = @approval_handler || RCrewAI.configuration.approval_handler || ToolApproval::TerminalHandler.new(self)
+      @approval_lock.synchronize { ask_handler(handler, request, timeout) }
     end
 
     def available_tools_description
@@ -100,28 +118,24 @@ module RCrewAI
       end.join("\n")
     end
 
+    # Runs a tool by name, outside a task. Refusals come back as a string, the
+    # way a model would be told.
     def use_tool(tool_name, **params)
       tool = tools.find { |t| t.name == tool_name || t.class.name.split('::').last.downcase == tool_name.downcase }
       raise ToolNotFoundError, "Tool '#{tool_name}' not found" unless tool
 
-      # Request human approval for tool usage if required
-      if @require_approval_for_tools && @human_input_enabled
-        approval_result = request_tool_approval(tool_name, params)
-        unless approval_result[:approved]
-          @logger.info "Tool usage rejected by human: #{tool_name}"
-          return "Tool usage was rejected by human reviewer: #{approval_result[:reason]}"
-        end
-      end
-
       @logger.debug "Using tool: #{tool_name} with params: #{params}"
 
       begin
-        result = tool.execute(**params)
+        result = ToolExecution.new(agent: self).call(tool, params, coerce: false)
 
         # Store tool usage in memory
         memory.add_tool_usage(tool_name, params, result)
 
         result
+      rescue ToolApproval::Refused => e
+        @logger.info "Tool usage refused: #{tool_name}"
+        e.message
       rescue StandardError => e
         @logger.error "Tool execution failed: #{e.message}"
 
@@ -195,14 +209,15 @@ module RCrewAI
     # Human input methods (public)
     def enable_human_input(**options)
       @human_input_enabled = true
-      @require_approval_for_tools = options.fetch(:require_approval_for_tools, false)
+      @require_approval_for_tools = options.fetch(:require_approval_for_tools, @require_approval_for_tools)
       @require_approval_for_final_answer = options.fetch(:require_approval_for_final_answer, false)
       @logger.info "Human input enabled for agent #{name}"
     end
 
+    # Leaves require_approval_for_tools on, with nobody to ask unless a handler is
+    # set. Turn it off explicitly with +agent.require_approval_for_tools = false+.
     def disable_human_input
       @human_input_enabled = false
-      @require_approval_for_tools = false
       @require_approval_for_final_answer = false
       @logger.info "Human input disabled for agent #{name}"
     end
@@ -380,16 +395,19 @@ module RCrewAI
       # Could enhance with formal reporting mechanism
     end
 
-    # Human interaction methods
-    def request_tool_approval(tool_name, params)
-      message = "Agent #{name} wants to use tool '#{tool_name}'"
-      context = "Parameters: #{params.inspect}"
-      consequences = "This will execute the #{tool_name} tool with the specified parameters."
+    # On its own thread so that a timeout stops a handler that never returns.
+    def ask_handler(handler, request, timeout)
+      thread = Thread.new do
+        Thread.current.report_on_exception = false
+        ToolApproval.decision_from(handler.call(request))
+      rescue StandardError, ScriptError => e
+        @logger.warn "Approval handler failed: #{e.class}: #{e.message}"
+        ToolApproval.refuse("The approval handler failed (#{e.class})")
+      end
+      return thread.value if thread.join(timeout)
 
-      request_human_approval(message,
-                             context: context,
-                             consequences: consequences,
-                             timeout: 60)
+      thread.kill
+      ToolApproval.refuse("No answer within #{timeout} seconds")
     end
 
     def handle_tool_failure(tool_name, params, error)
@@ -408,12 +426,15 @@ module RCrewAI
         timeout: 120
       )
 
+      # Nobody answered, so nobody asked for a retry or an abort.
+      raise error if choice_result[:no_response]
+
       case choice_result[:choice_index]
       when 0
         # Retry with same parameters
         @logger.info 'Human requested retry with same parameters'
         tool = tools.find { |t| t.name == tool_name }
-        tool.execute(**params)
+        ToolExecution.new(agent: self).call(tool, params, coerce: false)
       when 1
         # Retry with different parameters
         new_params_result = request_human_input(
@@ -425,7 +446,8 @@ module RCrewAI
         if new_params_result[:valid]
           @logger.info 'Human provided new parameters, retrying tool'
           tool = tools.find { |t| t.name == tool_name }
-          tool.execute(**new_params_result[:processed_input])
+          ToolExecution.new(agent: self).call(tool, new_params_result[:processed_input].transform_keys(&:to_sym),
+                                              coerce: false)
         else
           "Invalid parameters provided: #{new_params_result[:reason]}"
         end
@@ -438,6 +460,8 @@ module RCrewAI
         @logger.error 'Human requested task abortion due to tool failure'
         raise AgentError, "Task aborted by human due to tool failure: #{error.message}"
       end
+    rescue ToolApproval::Refused => e
+      e.message
     end
 
     def request_final_answer_approval(proposed_answer)

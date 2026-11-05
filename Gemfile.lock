@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    rcrewai (0.11.0)
+    rcrewai (0.12.0)
       concurrent-ruby (~> 1.2)
       faraday (~> 2.7)
       json (~> 2.6)

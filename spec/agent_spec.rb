@@ -167,25 +167,21 @@ RSpec.describe RCrewAI::Agent do
 
     context 'with human approval required' do
       before do
-        subject.instance_variable_set(:@require_approval_for_tools, true)
-        subject.instance_variable_set(:@human_input_enabled, true)
+        subject.require_approval_for_tools = true
       end
 
-      it 'requests human approval before tool execution' do
-        expect(subject).to receive(:request_tool_approval)
-          .with('test_tool', { param: 'value' })
-          .and_return({ approved: true })
+      it 'runs the tool once the handler approves' do
+        subject.approval_handler = ->(_) { true }
 
         result = subject.use_tool('test_tool', param: 'value')
         expect(result).to eq('Tool executed')
       end
 
-      it 'rejects tool usage when human disapproves' do
-        expect(subject).to receive(:request_tool_approval)
-          .and_return({ approved: false, reason: 'Too risky' })
+      it 'returns the refusal when the handler disapproves' do
+        subject.approval_handler = ->(_) { RCrewAI::ToolApproval.refuse('Too risky') }
 
         result = subject.use_tool('test_tool', param: 'value')
-        expect(result).to include('Tool usage was rejected')
+        expect(result).to include('approval was refused')
         expect(result).to include('Too risky')
       end
     end
@@ -291,7 +287,6 @@ RSpec.describe RCrewAI::Agent do
       it 'disables human input capabilities' do
         subject.disable_human_input
         expect(subject.human_input_enabled?).to be false
-        expect(subject.instance_variable_get(:@require_approval_for_tools)).to be false
         expect(subject.instance_variable_get(:@require_approval_for_final_answer)).to be false
       end
     end
