@@ -36,7 +36,7 @@ end
 # Social Media Content Tool
 class SocialMediaContentTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'social_media_content_manager'
     @description = 'Create and optimize content for different social media platforms'
     @platform_specs = {
@@ -154,7 +154,7 @@ end
 # Social Media Analytics Tool
 class SocialMediaAnalyticsTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'social_media_analytics'
     @description = 'Analyze social media performance and generate insights'
   end
@@ -266,7 +266,7 @@ end
 # Social Media Scheduling Tool
 class SocialMediaSchedulerTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'social_media_scheduler'
     @description = 'Schedule and optimize social media post timing'
     @schedule_queue = []
@@ -620,7 +620,7 @@ results[:results].each do |campaign_result|
   if campaign_result[:status] == :completed
     puts "   Deliverable: Successfully completed"
   else
-    puts "   Issue: #{campaign_result[:error]&.message}"
+    puts "   Issue: #{campaign_result[:result]}"
   end
   puts
 end

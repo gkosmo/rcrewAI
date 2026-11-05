@@ -332,7 +332,7 @@ results[:results].each do |review_result|
     word_count = review_result[:result].split.length
     puts "   Analysis: #{word_count} words of detailed feedback"
   else
-    puts "   Error: #{review_result[:error]&.message}"
+    puts "   Error: #{review_result[:result]}"
   end
   puts
 end

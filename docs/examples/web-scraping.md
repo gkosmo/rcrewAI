@@ -20,7 +20,7 @@ Our web scraping team includes:
 
 ## Complete Implementation
 
-```ruby
+````ruby
 require 'rcrewai'
 require 'nokogiri'
 require 'open-uri'
@@ -38,7 +38,7 @@ end
 # Web Scraping Tool
 class WebScrapingTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'web_scraper'
     @description = 'Extract data from web pages with rate limiting and error handling'
     @scraped_data = {}
@@ -254,7 +254,7 @@ end
 # Data Validation Tool
 class DataValidationTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'data_validator'
     @description = 'Validate and clean scraped data'
   end
@@ -345,7 +345,7 @@ end
 # Content Analysis Tool
 class ContentAnalysisTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'content_analyzer'
     @description = 'Analyze and process scraped content'
   end
@@ -743,7 +743,7 @@ results[:results].each do |scraping_result|
   if scraping_result[:status] == :completed
     puts "   Operation: Successfully completed"
   else
-    puts "   Issue: #{scraping_result[:error]&.message}"
+    puts "   Issue: #{scraping_result[:result]}"
   end
   puts
 end
@@ -1148,7 +1148,7 @@ puts "   • 1,450 keywords extracted and categorized"
 puts "   • 890 named entities identified"
 puts "   • 78% positive sentiment on AI automation"
 puts "   • 12 distinct content categories identified"
-```
+````
 
 ## Key Web Scraping Features
 

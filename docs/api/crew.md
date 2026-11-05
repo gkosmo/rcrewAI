@@ -24,6 +24,8 @@ Creates a new crew instance.
 - `knowledge_sources` (Array, optional) - Sources the crew wraps in a shared base (see [Knowledge (RAG)]({{ site.baseurl }}/tutorials/knowledge))
 - `verbose` (Boolean, optional) - Detailed logging (default: false)
 - `max_iterations` (Integer, optional) - Max iterations per agent (default: 10)
+- `consensus_max_concurrency` (Integer, optional) - For `:consensual`, limits concurrent proposal and scoring calls (default: 8)
+- `checkpoint` (store, optional) - Default store for checkpointing. See [Checkpointing]({{ site.baseurl }}/tutorials/checkpointing)
 
 **Returns:** `RCrewAI::Crew` instance
 
@@ -33,6 +35,8 @@ crew = RCrewAI::Crew.new("research_team", process: :consensual, consensus_agents
 ```
 
 ### `.create(name)`
+
+**Placeholder:** crews aren't persisted yet, so this only builds a new, empty crew.
 
 Creates and saves a new crew.
 
@@ -48,6 +52,8 @@ crew = RCrewAI::Crew.create("marketing_crew")
 
 ### `.load(name)`
 
+**Placeholder:** crews aren't persisted yet, so this only builds a new, empty crew.
+
 Loads an existing crew from storage.
 
 **Parameters:**
@@ -61,6 +67,8 @@ crew = RCrewAI::Crew.load("existing_crew")
 ```
 
 ### `.list`
+
+**Placeholder:** returns sample names, not saved crews.
 
 Lists all available crews.
 
@@ -132,6 +140,8 @@ results = future.value  # Block until complete
 
 ### `#save`
 
+**Placeholder:** returns `true` without saving anything.
+
 Saves the crew configuration to storage.
 
 **Returns:** Boolean indicating success
@@ -169,26 +179,17 @@ crew.tasks.each do |task|
 end
 ```
 
-### `#clear_agents`
+### `#resume(run_id, checkpoint: nil, **options)`
 
-Removes all agents from the crew.
+Resumes a checkpointed run. Completed tasks replay their stored results and the rest execute. Takes the same options as `#execute`. See [Checkpointing]({{ site.baseurl }}/tutorials/checkpointing).
 
-**Returns:** `self`
-
-**Example:**
-```ruby
-crew.clear_agents
-```
-
-### `#clear_tasks`
-
-Removes all tasks from the crew's workflow.
-
-**Returns:** `self`
+**Raises:** `RCrewAI::Checkpoint::CheckpointError` if there's no store or no checkpoint for `run_id`
 
 **Example:**
 ```ruby
-crew.clear_tasks
+crew.resume(run_id, checkpoint: store)
+crew.run_id              # the new run's id
+crew.restored_task_names # tasks replayed from the checkpoint
 ```
 
 ## Attributes
@@ -204,9 +205,9 @@ The name of the crew.
 puts crew.name  # => "research_team"
 ```
 
-### `process`
+### `process=` and `process_type`
 
-The execution process type for the crew.
+Sets and reads the execution process. The writer takes a Symbol; `process_type` is the reader.
 
 **Type:** Symbol (`:sequential`, `:hierarchical`, `:consensual`)
 
@@ -215,6 +216,7 @@ The execution process type for the crew.
 **Example:**
 ```ruby
 crew.process = :hierarchical
+crew.process_type # => :hierarchical
 ```
 
 ### `verbose`
@@ -243,51 +245,35 @@ Maximum number of iterations for task execution.
 crew.max_iterations = 20
 ```
 
-## Configuration Options
+## Events
 
-Crews can be configured with various options:
+Pass a block or `stream:` to `#execute` to receive events as the crew runs. See [Interceptors and Events]({{ site.baseurl }}/tutorials/interceptors-and-events).
 
 ```ruby
-crew = RCrewAI::Crew.new("advanced_crew") do |c|
-  c.process = :hierarchical
-  c.verbose = true
-  c.max_iterations = 15
-  c.memory = true  # Enable memory between tasks
-  c.cache = true   # Enable result caching
+crew.execute do |event|
+  print event.text if event.is_a?(RCrewAI::Events::TextDelta)
 end
 ```
 
-## Events
-
-Crews emit events during execution that can be hooked into:
+## Kickoff Hooks
 
 ```ruby
-crew.on(:task_started) do |task|
-  puts "Starting task: #{task.name}"
-end
-
-crew.on(:task_completed) do |task, result|
-  puts "Completed task: #{task.name}"
-  puts "Result: #{result}"
-end
-
-crew.on(:execution_complete) do |results|
-  puts "All tasks completed!"
-end
+crew.before_kickoff { |inputs| inputs.merge(date: Date.today) }
+crew.after_kickoff  { |result| result }
 ```
 
 ## Error Handling
 
+A failed task doesn't raise out of `#execute`. Check the returned summary:
+
 ```ruby
-begin
-  results = crew.execute
-rescue RCrewAI::ExecutionError => e
-  puts "Execution failed: #{e.message}"
-  puts "Failed task: #{e.task.name}"
-rescue RCrewAI::ConfigurationError => e
-  puts "Configuration error: #{e.message}"
-end
+result = crew.execute
+puts "#{result[:completed_tasks]}/#{result[:total_tasks]} tasks completed"
+puts "Success rate: #{result[:success_rate]}%"
+warn "#{result[:failed_tasks]} tasks failed" if result[:failed_tasks].positive?
 ```
+
+Invalid configuration raises `RCrewAI::ConfigurationError`, and an unknown process type raises when the crew is created.
 
 ## Examples
 

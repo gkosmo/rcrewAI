@@ -36,7 +36,7 @@ end
 # Literature Review Tool
 class LiteratureReviewTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'literature_review_manager'
     @description = 'Conduct comprehensive literature reviews and citation analysis'
     @research_database = {}
@@ -188,7 +188,7 @@ end
 # Research Methodology Tool
 class ResearchMethodologyTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'research_methodology_designer'
     @description = 'Design research methodologies and experimental protocols'
   end
@@ -329,7 +329,7 @@ end
 # Data Analysis Tool
 class ResearchAnalyticsTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'research_analytics'
     @description = 'Perform statistical analysis and interpretation of research data'
   end
@@ -761,7 +761,7 @@ results[:results].each do |research_result|
   if research_result[:status] == :completed
     puts "   Component: Successfully completed"
   else
-    puts "   Issue: #{research_result[:error]&.message}"
+    puts "   Issue: #{research_result[:result]}"
   end
   puts
 end
@@ -1216,7 +1216,7 @@ Coordinated research across multiple domains:
 ### 5. **Evidence-Based Decision Making**
 Data-driven research process:
 
-```ruby
+```text
 # Research workflow
 Literature Review → Methodology Design → Protocol Development →
 Statistical Planning → Documentation → Coordination & Quality Assurance

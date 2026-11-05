@@ -20,7 +20,7 @@ Our content marketing pipeline includes:
 
 ## Complete Implementation
 
-```ruby
+````ruby
 require 'rcrewai'
 require 'json'
 require 'yaml'
@@ -250,7 +250,7 @@ results[:results].each do |task_result|
     word_count = task_result[:result].split.length
     puts "   Output: #{word_count} words generated"
   else
-    puts "   Error: #{task_result[:error]&.message}"
+    puts "   Error: #{task_result[:result]}"
   end
   puts
 end
@@ -569,7 +569,7 @@ puts "   • Content calendar scheduled"
 puts ""
 puts "💡 **Estimated Time Saved:** 20-25 hours of manual content creation"
 puts "💰 **Projected ROI:** $15,000-$30,000 in pipeline value"
-```
+````
 
 ## Key Pipeline Features
 

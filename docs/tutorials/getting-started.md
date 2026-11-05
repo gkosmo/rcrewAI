@@ -13,11 +13,13 @@ This tutorial will walk you through installing RCrewAI and creating your first A
 Before you begin, ensure you have:
 - Ruby 3.0 or higher installed
 - Bundler gem installed (`gem install bundler`) 
-- An API key from one of the supported providers:
-  - **OpenAI** (recommended for beginners): Get from [platform.openai.com](https://platform.openai.com)
-  - **Anthropic (Claude)**: Get from [console.anthropic.com](https://console.anthropic.com)
-  - **Google (Gemini)**: Get from [ai.google.dev](https://ai.google.dev)
-  - **Azure OpenAI**: Set up through Azure portal
+- Access to a model through one of the supported providers:
+  - **OpenAI**: get a key from [platform.openai.com](https://platform.openai.com)
+  - **Anthropic (Claude)**: get a key from [console.anthropic.com](https://console.anthropic.com)
+  - **Google (Gemini)**: get a key from [ai.google.dev](https://ai.google.dev)
+  - **Azure OpenAI**: set up through the Azure portal
+  - **Ollama**: runs locally, with no key
+  - **Others**: AWS Bedrock, Snowflake Cortex, or any OpenAI-compatible endpoint
 
 ## Installation
 
@@ -45,20 +47,19 @@ gem install rcrewai
 
 ## Configuration
 
-RCrewAI supports multiple LLM providers. Choose the one that works best for you:
+Choose a provider. API keys are read from environment variables, and `config.model`
+selects the model.
 
-### OpenAI (Recommended for beginners)
+### OpenAI
 
-Set your API key as an environment variable:
 ```bash
 export OPENAI_API_KEY="your-openai-key-here"
 ```
 
-Configure RCrewAI:
 ```ruby
 RCrewAI.configure do |config|
   config.llm_provider = :openai
-  config.openai_model = 'gpt-4'  # or 'gpt-3.5-turbo' for lower cost
+  config.model = 'gpt-4o'
 end
 ```
 
@@ -71,7 +72,8 @@ export ANTHROPIC_API_KEY="your-anthropic-key-here"
 ```ruby
 RCrewAI.configure do |config|
   config.llm_provider = :anthropic
-  config.anthropic_model = 'claude-3-sonnet-20240229'
+  config.model = 'claude-opus-5-5'
+  config.temperature = nil  # current Claude models reject `temperature`
 end
 ```
 
@@ -84,7 +86,7 @@ export GOOGLE_API_KEY="your-google-key-here"
 ```ruby
 RCrewAI.configure do |config|
   config.llm_provider = :google
-  config.google_model = 'gemini-pro'
+  config.model = 'gemini-2.5-flash'
 end
 ```
 
@@ -92,7 +94,7 @@ end
 
 ```bash
 export AZURE_OPENAI_API_KEY="your-azure-key"
-export AZURE_API_VERSION="2023-05-15"
+export AZURE_API_VERSION="2024-10-21"
 export AZURE_DEPLOYMENT_NAME="your-deployment"
 ```
 
@@ -100,7 +102,15 @@ export AZURE_DEPLOYMENT_NAME="your-deployment"
 RCrewAI.configure do |config|
   config.llm_provider = :azure
   config.base_url = "https://your-resource.openai.azure.com/"
-  config.azure_model = 'gpt-4'
+end
+```
+
+### Ollama (local)
+
+```ruby
+RCrewAI.configure do |config|
+  config.llm_provider = :ollama
+  config.model = 'llama3.1'  # no API key needed
 end
 ```
 
@@ -117,7 +127,8 @@ require 'rcrewai'
 
 # Configure RCrewAI with your chosen provider
 RCrewAI.configure do |config|
-  config.llm_provider = :openai  # or :anthropic, :google, :azure
+  config.llm_provider = :openai
+  config.model = 'gpt-4o'
   # API keys are loaded from environment variables automatically
 end
 
@@ -137,8 +148,8 @@ researcher = RCrewAI::Agent.new(
   goal: "Uncover cutting-edge developments in AI and data science",
   backstory: "You are a seasoned researcher with a knack for uncovering the latest trends and technologies in AI and data science. You excel at finding reliable sources and extracting key insights.",
   tools: [RCrewAI::Tools::WebSearch.new],  # Can search the web!
-  verbose: true,  # Shows reasoning process
-  max_iterations: 5  # Limit reasoning loops
+  verbose: true,  # Logs each step
+  max_iterations: 5  # Limit LLM turns per task
 )
 
 # Writer Agent with file writing capabilities  
@@ -165,21 +176,22 @@ crew.add_agent(writer)
 Define tasks with specific outputs and dependencies:
 
 ```ruby
-# Research Task - Agent will actually search the web!
+# Research Task - The agent can search the web
 research_task = RCrewAI::Task.new(
-  name: "research_ai_trends_2024",
-  description: "Research the latest AI developments and breakthroughs in 2024. Focus on identifying key trends, major companies involved, and potential impacts on different industries.",
+  name: "research_ai_trends",
+  description: "Research the latest AI developments and breakthroughs. Focus on identifying key trends, major companies involved, and potential impacts on different industries.",
   agent: researcher,
-  expected_output: "A comprehensive research report covering: 1) Top 5 AI trends in 2024, 2) Key companies and their innovations, 3) Industry impact analysis, 4) Future predictions",
-  max_retries: 2  # Retry if web search fails
+  expected_output: "A comprehensive research report covering: 1) Top 5 AI trends, 2) Key companies and their innovations, 3) Industry impact analysis, 4) Future predictions",
+  max_retries: 2  # Retry if the task raises an error
 )
 
-# Writing Task - Agent will use research results and save to file!
+# Writing Task - Agent uses the research results, and the output is saved to a file
 writing_task = RCrewAI::Task.new(
   name: "write_ai_trends_article", 
-  description: "Write a compelling, informative article about AI trends based on the research. Make it engaging for a tech-savvy audience. Save the final article to a file named 'ai_trends_2024.md'.",
+  description: "Write a compelling, informative article about AI trends based on the research. Make it engaging for a tech-savvy audience.",
   agent: writer,
-  expected_output: "A well-structured 1000-1500 word article covering the research findings, saved to ai_trends_2024.md file",
+  expected_output: "A well-structured 1000-1500 word article covering the research findings",
+  output_file: "ai_trends.md",  # Writes the result here when the task finishes
   context: [research_task],  # Uses research results as input
   callback: ->(task, result) { puts "Article completed: #{result.length} characters written!" }
 )
@@ -197,12 +209,9 @@ Run the crew and monitor the intelligent agents at work:
 puts "🚀 Starting AI Research Crew..."
 puts "The agents will now research and write about AI trends!"
 
-# Execute the crew - this will:
-# 1. Research agent searches web for AI trends
-# 2. Research agent analyzes and summarizes findings  
-# 3. Writer agent receives research context
-# 4. Writer agent creates article and saves to file
+# Runs the tasks in order, passing the research to the writer as context
 result = crew.execute
+puts "Success rate: #{result[:success_rate]}% (#{result[:completed_tasks]}/#{result[:total_tasks]} tasks)"
 
 # Check results and status
 puts "\n" + "="*50
@@ -220,9 +229,9 @@ puts "Article Preview:"
 puts writing_task.result[0..200] + "..." if writing_task.result
 
 # Check if file was actually created
-if File.exist?('ai_trends_2024.md')
-  puts "\n✅ Article successfully saved to ai_trends_2024.md"
-  puts "File size: #{File.size('ai_trends_2024.md')} bytes"
+if File.exist?('ai_trends.md')
+  puts "\n✅ Article successfully saved to ai_trends.md"
+  puts "File size: #{File.size('ai_trends.md')} bytes"
 else
   puts "\n❌ Article file not found"
 end
@@ -235,57 +244,33 @@ puts "Writer memory: #{writer.memory.stats}"
 
 ### What Just Happened?
 
-When you run this code with a valid API key, here's what actually happens:
+When you run this code with a valid API key:
 
-1. **Researcher Agent**:
-   - Uses reasoning loops to plan the research approach
-   - Executes web searches using DuckDuckGo  
-   - Analyzes search results to identify key trends
-   - Synthesizes findings into a comprehensive report
-   - Stores successful strategies in memory
+1. **The researcher** gets its task plus its tools. The model decides whether and how
+   often to call `web_search`, which uses DuckDuckGo, and writes a report from the results.
+2. **The writer** gets the researcher's result as context, because the task lists it in
+   `context:`, and writes the article. RCrewAI saves the result to `ai_trends.md`
+   because of `output_file:`.
+3. **Each agent** records its work in memory. By default this lasts only as long as the
+   process. See [Cognitive Memory]({{ site.baseurl }}/tutorials/memory) to persist it.
 
-2. **Writer Agent**:
-   - Receives research findings as context
-   - Plans article structure and key points
-   - Creates engaging, well-structured content
-   - Saves the final article to a markdown file
-   - Learns from successful writing patterns
-
-3. **System Features**:
-   - Automatic retry if web search fails
-   - Security controls on file operations
-   - Memory persistence between executions  
-   - Comprehensive logging and monitoring
+A task that raises an error is retried up to `max_retries` times. If it still fails,
+the crew moves on, and `result[:failed_tasks]` tells you how many failed. Any task that
+depends on a failed one through `context:` fails too.
 
 ## Using the CLI
 
-RCrewAI also provides a command-line interface for managing crews:
-
-### Create a New Crew
-
-```bash
-$ rcrewai new research_team
-Creating new crew: research_team
-Crew 'research_team' created successfully!
-```
-
-### List Available Crews
+RCrewAI also installs an `rcrewai` command. Its most useful job today is inspecting
+saved checkpoints with `rcrewai checkpoint list`, `info`, and `delete`.
 
 ```bash
-$ rcrewai list
-Available crews:
-  - research_team
-  - marketing_crew
-  - development_crew
+$ rcrewai version
+$ rcrewai checkpoint list --dir .rcrewai/checkpoints
 ```
 
-### Run a Crew
-
-```bash
-$ rcrewai run --crew research_team
-Running crew: research_team
-Executing tasks...
-```
+The `new`, `list`, and `run` commands are placeholders. They don't save crew definitions
+between invocations, so `rcrewai run --crew NAME` starts an empty crew, and `rcrewai list`
+prints fixed example names. Define your crews in Ruby, as in this tutorial.
 
 ## Working with Tools
 
@@ -319,20 +304,24 @@ Now that you've created your first crew, explore these topics:
 - [Advanced Agent Configuration]({{ site.baseurl }}/tutorials/advanced-agents)
 - [Custom Tools Development]({{ site.baseurl }}/tutorials/custom-tools)
 - [Working with Multiple Crews]({{ site.baseurl }}/tutorials/multiple-crews)
+- [Cognitive Memory]({{ site.baseurl }}/tutorials/memory)
 - [Production Deployment]({{ site.baseurl }}/tutorials/deployment)
 
 ## Troubleshooting
 
 ### Common Issues
 
-**Issue**: "No API key configured"
-**Solution**: Ensure your API key is set in the environment variables or configuration file.
+**Issue**: `API key must be set for openai`
+**Solution**: Set the provider's environment variable, such as `OPENAI_API_KEY`, or assign it in `RCrewAI.configure`.
 
-**Issue**: "Agent not found"
-**Solution**: Make sure the agent is added to the crew before creating tasks that reference it.
+**Issue**: A model-not-found error from the provider
+**Solution**: Set `config.model` to a model your account can use. The built-in defaults are old, and some have been retired by their providers.
 
-**Issue**: "Task execution failed"
-**Solution**: Check that all task dependencies are properly defined and agents have necessary tools.
+**Issue**: A 400 error mentioning `temperature` on Claude
+**Solution**: Set `config.temperature = nil`. Current Claude models reject this parameter.
+
+**Issue**: A task has status `failed`
+**Solution**: Check `task.result`, which holds the error message, and the log output. A task also fails if a task in its `context:` failed.
 
 ## Get Help
 

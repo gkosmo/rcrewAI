@@ -62,6 +62,25 @@ Welcome to the RCrewAI tutorials! These step-by-step guides will take you from b
 
 ---
 
+## 🔌 Production Controls (0.8 – 0.10)
+
+### [LLM Providers]({{ site.baseurl }}/tutorials/providers)
+**Set up any of the nine providers**, including AWS Bedrock, Snowflake Cortex and OpenAI-compatible endpoints.
+
+### [Checkpointing]({{ site.baseurl }}/tutorials/checkpointing)
+**Resume a failed run** without repeating finished tasks, and follow a run's lineage.
+
+### [Interceptors and Events]({{ site.baseurl }}/tutorials/interceptors-and-events)
+**See inside a run.** Hook into every LLM call and rebuild the event stream into a trace.
+
+### [Concurrency]({{ site.baseurl }}/tutorials/concurrency)
+**Control what runs in parallel:** tool calls, consensus rounds, embeddings and tasks.
+
+### [Live Streaming]({{ site.baseurl }}/tutorials/live-streaming)
+**Build real-time callers** with cancellable Anthropic streams and connection reuse.
+
+---
+
 ## ✨ Capabilities (0.4 – 0.7)
 
 The features that grew RCrewAI beyond the classic crew model.

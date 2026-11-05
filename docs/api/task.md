@@ -81,7 +81,6 @@ begin
   puts "Task completed successfully: #{result[0..100]}..."
 rescue RCrewAI::TaskExecutionError => e
   puts "Task failed: #{e.message}"
-  puts "Retry count: #{task.retry_count}"
 rescue RCrewAI::TaskDependencyError => e
   puts "Dependencies not met: #{e.message}"
 end
@@ -131,7 +130,7 @@ Checks if all dependency tasks are completed.
 if task.dependencies_met?
   result = task.execute
 else
-  puts "Waiting for dependencies: #{task.pending_dependencies.map(&:name)}"
+  puts "Waiting for dependencies: #{task.context.reject(&:completed?).map(&:name)}"
 end
 ```
 
@@ -230,21 +229,6 @@ Total execution time in seconds.
 
 **Type:** Float
 
-### `retry_count`
-Number of retry attempts made.
-
-**Type:** Integer
-
-### `error_message`
-Error message if task failed.
-
-**Type:** String
-
-### `human_input`
-Whether human input is enabled.
-
-**Type:** Boolean
-
 ### `async`
 Whether task supports async execution.
 
@@ -271,8 +255,7 @@ when :completed
   puts "Result: #{task.result}"
   puts "Execution time: #{task.execution_time}s"
 when :failed
-  puts "Task failed: #{task.error_message}"
-  puts "Retry attempts: #{task.retry_count}"
+  puts "Task failed: #{task.result}"
 end
 ```
 
@@ -395,96 +378,33 @@ crew.add_task(parallel_tasks)
 results = crew.execute(async: true, max_concurrency: 3)
 ```
 
-## Task Callbacks and Events
+## Task Callbacks
 
-Tasks can execute callbacks at various lifecycle events:
+`callback:` runs once when the task completes. Use `crew.execute` events for finer-grained progress.
 
 ```ruby
 task = RCrewAI::Task.new(
   name: "data_analysis",
   description: "Analyze customer data for insights",
   agent: analyst,
-  
-  # Callbacks for different events
-  on_start: ->(task) {
-    puts "Starting analysis: #{task.name}"
-    MetricsTracker.task_started(task.name)
-  },
-  
-  on_progress: ->(task, progress) {
-    puts "Progress: #{progress}% complete"
-    ProgressBar.update(task.name, progress)
-  },
-  
-  on_completion: ->(task, result) {
-    puts "Analysis completed: #{result.length} chars"
+  callback: ->(task, result) {
     ResultStore.save(task.name, result)
-    EmailNotifier.send_completion_notice(task.name)
-  },
-  
-  on_error: ->(task, error) {
-    puts "Task failed: #{error.message}"
-    ErrorTracker.log_error(task.name, error)
-    AlertSystem.notify_failure(task.name)
+    puts "Finished in #{task.execution_time}s"
   }
 )
 ```
 
-## Retry Logic and Error Handling
+## Retries
 
-Tasks have built-in retry capabilities:
+`max_retries:` sets how many times a failed task is retried (default: 2). Retries back off exponentially. There's no per-task timeout or retry condition.
 
 ```ruby
 resilient_task = RCrewAI::Task.new(
   name: "api_data_sync",
   description: "Sync data with external API",
   agent: sync_agent,
-  max_retries: 5,           # Try up to 5 times
-  retry_delay: 10,          # Wait 10 seconds between retries
-  timeout: 120,             # Timeout after 2 minutes
-  
-  # Custom retry logic
-  retry_if: ->(error) {
-    # Retry on network errors, but not on authentication errors
-    error.is_a?(Net::TimeoutError) || error.is_a?(Net::ReadTimeout)
-  }
+  max_retries: 5
 )
-
-# Task will automatically retry on transient failures
-result = resilient_task.execute
-```
-
-## Task Monitoring and Metrics
-
-```ruby
-# Task execution with monitoring
-task = RCrewAI::Task.new(
-  name: "report_generation",
-  description: "Generate monthly performance report", 
-  agent: report_agent,
-  
-  # Built-in metrics
-  track_metrics: true,
-  
-  # Custom monitoring
-  callback: ->(task, result) {
-    # Record performance metrics
-    TaskMetrics.record(
-      task_name: task.name,
-      execution_time: task.execution_time,
-      result_size: result.length,
-      agent_name: task.agent.name,
-      success: task.status == :completed
-    )
-  }
-)
-
-# After execution
-puts "Task metrics:"
-puts "- Execution time: #{task.execution_time}s"
-puts "- Retry attempts: #{task.retry_count}"
-puts "- Result size: #{task.result.length} characters"
-puts "- Agent used: #{task.agent.name}"
 ```
 
 ## Best Practices
@@ -494,8 +414,7 @@ puts "- Agent used: #{task.agent.name}"
 3. **Proper Dependencies**: Use context to establish task execution order
 4. **Appropriate Tools**: Provide task-specific tools when needed
 5. **Human Oversight**: Enable human input for critical tasks
-6. **Error Handling**: Set appropriate retry limits and timeouts
+6. **Error Handling**: Set appropriate retry limits
 7. **Async Where Possible**: Mark independent tasks as async for performance
 8. **Monitoring**: Use callbacks to track task performance and results
-9. **Resource Limits**: Set reasonable timeouts to prevent hanging
 10. **Result Validation**: Validate task outputs match expected format

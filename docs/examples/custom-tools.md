@@ -20,7 +20,7 @@ Our custom tool development system includes:
 
 ## Complete Implementation
 
-```ruby
+````ruby
 require 'rcrewai'
 require 'json'
 require 'net/http'
@@ -37,7 +37,7 @@ end
 # Advanced API Integration Tool
 class AdvancedAPITool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'advanced_api_client'
     @description = 'Advanced API client with authentication, caching, and error handling'
     @base_url = options[:base_url]
@@ -212,7 +212,7 @@ end
 # Data Processing Tool
 class DataProcessingTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'data_processor'
     @description = 'Advanced data processing with transformation and analysis capabilities'
     @processors = {}
@@ -348,7 +348,7 @@ end
 # Machine Learning Tool
 class MachineLearningTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'ml_processor'
     @description = 'Machine learning tool for training, prediction, and model management'
     @models = {}
@@ -483,7 +483,7 @@ end
 # Testing and Validation Tool
 class ToolTestingFramework < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'tool_tester'
     @description = 'Comprehensive testing framework for custom tools'
     @test_results = {}
@@ -895,7 +895,7 @@ results[:results].each do |dev_result|
   if dev_result[:status] == :completed
     puts "   Deliverable: Successfully completed"
   else
-    puts "   Issue: #{dev_result[:error]&.message}"
+    puts "   Issue: #{dev_result[:result]}"
   end
   puts
 end
@@ -1169,7 +1169,7 @@ puts "   • 60% reduction in future tool development time"
 puts "   • 5x increase in available agent capabilities"
 puts "   • 40% reduction in tool-related support requests"
 puts "   • Strategic competitive advantage through advanced capabilities"
-```
+````
 
 ## Key Custom Tool Development Features
 
@@ -1206,7 +1206,7 @@ Comprehensive testing and validation:
 ### 4. **Complete Development Lifecycle**
 End-to-end tool development process:
 
-```ruby
+```text
 # Development workflow
 Architecture Design → Implementation → Testing →
 Documentation → Integration → Coordination & Quality Assurance

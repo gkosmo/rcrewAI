@@ -20,7 +20,7 @@ Our concurrent processing system includes:
 
 ## Complete Implementation
 
-```ruby
+````ruby
 require 'rcrewai'
 require 'json'
 require 'concurrent'
@@ -40,7 +40,7 @@ end
 # Performance Monitoring Tool
 class PerformanceMonitorTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'performance_monitor'
     @description = 'Monitor and track task execution performance'
     @metrics = Concurrent::Hash.new
@@ -129,7 +129,7 @@ end
 # Shared Resource Pool Tool
 class SharedResourceTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'shared_resource_pool'
     @description = 'Manage shared resources across concurrent tasks'
     @resource_pool = Concurrent::Hash.new
@@ -843,7 +843,7 @@ puts "   • #{(workload_data['customer_records'] + workload_data['transaction_r
 puts "   • #{workload_data['content_pieces']} content pieces generated"
 puts "   • #{workload_data['analysis_datasets']} analysis reports completed"
 puts "   • #{workload_data['quality_checks']} quality validations performed"
-```
+````
 
 ## Key Concurrent Processing Features
 

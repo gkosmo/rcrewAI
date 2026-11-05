@@ -19,7 +19,7 @@ Our customer support system includes:
 
 ## Complete Implementation
 
-```ruby
+````ruby
 require 'rcrewai'
 require 'json'
 
@@ -278,7 +278,7 @@ results[:results].each do |support_result|
   if support_result[:status] == :completed
     puts "   Support: Successfully handled"
   else
-    puts "   Issue: #{support_result[:error]&.message}"
+    puts "   Issue: #{support_result[:result]}"
   end
   puts
 end
@@ -670,7 +670,7 @@ puts "   • 75% faster response times"
 puts "   • 40% improvement in agent productivity"
 puts "   • 85% self-service deflection rate"
 puts "   • 15% improvement in customer satisfaction"
-```
+````
 
 ## Key Customer Support Features
 
@@ -688,7 +688,7 @@ knowledge_manager      # Documentation maintenance
 ### 2. **Intelligent Triage System**
 Automatic categorization and routing:
 
-```ruby
+```text
 # Priority-based routing
 Critical → Immediate escalation
 High → Technical specialist  
@@ -707,7 +707,7 @@ Support across all customer communication channels:
 ### 4. **Performance Monitoring**
 Comprehensive metrics and SLA tracking:
 
-```ruby
+```text
 # SLA Targets
 Critical: 15 minutes first response, 2 hours resolution
 High: 1 hour first response, 8 hours resolution

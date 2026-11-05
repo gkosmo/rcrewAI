@@ -19,7 +19,7 @@ Our API integration system includes:
 
 ## Complete Implementation
 
-```ruby
+````ruby
 require 'rcrewai'
 require 'faraday'
 require 'json'
@@ -36,7 +36,7 @@ end
 # Generic REST API Tool
 class RestAPITool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'rest_api'
     @description = 'Make REST API calls with authentication and error handling'
     @base_url = options[:base_url]
@@ -530,7 +530,7 @@ results[:results].each do |integration_result|
   if integration_result[:status] == :completed
     puts "   Integration: Successfully completed"
   else
-    puts "   Error: #{integration_result[:error]&.message}"
+    puts "   Error: #{integration_result[:result]}"
   end
   puts
 end
@@ -780,7 +780,7 @@ puts "   • OAuth 2.0 and API key authentication"
 puts "   • TLS 1.3 encryption for data in transit"
 puts "   • Automated retry logic and error handling"
 puts "   • Real-time monitoring and alerting"
-```
+````
 
 ## Key API Integration Features
 

@@ -115,6 +115,25 @@ USE_TOOL[filewriter](file_path=report.md, content=## Report\nThis is my analysis
 
 ## Creating Custom Tools
 
+### Declaring a Tool
+
+Declare the name, description and parameters on the class. This gives the model a strict JSON schema for native function calling, and arguments are checked and converted before `execute` runs:
+
+```ruby
+class WeatherTool < RCrewAI::Tools::Base
+  tool_name 'weather'
+  description 'Get the current weather for a city'
+  param :city, type: :string, required: true, description: 'City name'
+  param :units, type: :string, description: 'celsius or fahrenheit'
+
+  def execute(city:, units: 'celsius')
+    "22 degrees #{units} in #{city}"
+  end
+end
+```
+
+The examples below set `@name` and `@description` in the constructor instead. That still works, but the tool gets a permissive schema and RCrewAI prints a warning.
+
 ### Basic Custom Tool
 
 ```ruby

@@ -6,7 +6,9 @@ description: Complete guide to deploying RCrewAI applications in production with
 
 # Production Deployment
 
-This comprehensive tutorial covers deploying RCrewAI applications to production environments with enterprise-grade reliability, monitoring, scaling, and security. You'll learn containerization, orchestration, monitoring, and operational best practices.
+This tutorial shows one way to run RCrewAI in production: a small web service wrapping your crews, packaged with Docker and run on Kubernetes.
+
+RCrewAI is a library, so the gem itself provides only the crews and their configuration. The web app, metrics, logging, tracing, and infrastructure below are example application code for you to adapt. They need their own gems, such as `sinatra`, `puma`, and `prometheus-client`.
 
 ## Table of Contents
 1. [Production Readiness Checklist](#production-readiness-checklist)
@@ -35,7 +37,7 @@ Before deploying to production, ensure your RCrewAI application meets these requ
 - [ ] Environment-based configuration
 - [ ] Secrets management implemented
 - [ ] Resource limits defined
-- [ ] Timeout and retry logic configured
+- [ ] Timeouts, `max_retries`, and `max_rpm` set deliberately
 - [ ] Logging levels appropriate for production
 
 ### ✅ Monitoring
@@ -140,7 +142,6 @@ RUN chown -R rcrewai:rcrewai /app
 USER rcrewai
 
 # Environment variables
-ENV RAILS_ENV=production
 ENV RACK_ENV=production
 ENV BUNDLE_DEPLOYMENT=true
 ENV BUNDLE_WITHOUT="development:test"
@@ -162,8 +163,98 @@ require 'rcrewai'
 require 'sinatra'
 require 'json'
 require 'logger'
+require 'securerandom'
+require 'time'
 require 'prometheus/middleware/collector'
 require 'prometheus/middleware/exporter'
+
+class ValidationError < StandardError; end
+
+# Tasks hold the state of their run, so build a new crew for each request
+# rather than sharing one between threads.
+class CrewRegistry
+  def initialize
+    @crews = {}
+  end
+  
+  def register_crew(name, &builder)
+    @crews[name] = builder
+  end
+  
+  def get_crew(name)
+    builder = @crews[name]
+    raise ValidationError, "Crew not found: #{name}" unless builder
+    builder.call
+  end
+  
+  def crew_exists?(name)
+    @crews.key?(name)
+  end
+  
+  def crew_count
+    @crews.length
+  end
+  
+  def register_default_crews
+    # Register your production crews here
+    register_crew('customer_support') { create_support_crew }
+    register_crew('data_analysis') { create_analysis_crew }
+  end
+  
+  private
+  
+  def create_support_crew
+    crew = RCrewAI::Crew.new("customer_support")
+    
+    support_agent = RCrewAI::Agent.new(
+      name: "support_specialist",
+      role: "Customer Support Specialist",
+      goal: "Provide excellent customer support and resolve issues efficiently",
+      tools: [
+        RCrewAI::Tools::WebSearch.new(max_results: 5),
+        RCrewAI::Tools::FileReader.new
+      ]
+    )
+    
+    crew.add_agent(support_agent)
+    
+    support_task = RCrewAI::Task.new(
+      name: "handle_support_request",
+      description: "Handle customer support request with empathy and expertise",
+      agent: support_agent,
+      expected_output: "Professional support response with clear next steps"
+    )
+    
+    crew.add_task(support_task)
+    crew
+  end
+  
+  def create_analysis_crew
+    crew = RCrewAI::Crew.new("data_analysis")
+    
+    analyst = RCrewAI::Agent.new(
+      name: "data_analyst",
+      role: "Senior Data Analyst", 
+      goal: "Analyze data and provide actionable insights",
+      tools: [
+        RCrewAI::Tools::FileReader.new,
+        RCrewAI::Tools::WebSearch.new
+      ]
+    )
+    
+    crew.add_agent(analyst)
+    
+    analysis_task = RCrewAI::Task.new(
+      name: "data_analysis",
+      description: "Perform comprehensive data analysis and generate insights",
+      agent: analyst,
+      expected_output: "Detailed analysis report with recommendations"
+    )
+    
+    crew.add_task(analysis_task)
+    crew
+  end
+end
 
 class ProductionRCrewAI < Sinatra::Base
   configure :production do
@@ -177,8 +268,10 @@ class ProductionRCrewAI < Sinatra::Base
     # Configure RCrewAI for production
     RCrewAI.configure do |config|
       config.llm_provider = ENV.fetch('LLM_PROVIDER', 'openai').to_sym
-      config.openai_api_key = ENV.fetch('OPENAI_API_KEY')
-      config.temperature = ENV.fetch('LLM_TEMPERATURE', '0.1').to_f
+      config.model = ENV.fetch('LLM_MODEL', 'gpt-4o')
+      # API keys are read from the provider's environment variable.
+      # Current Claude models reject `temperature`: leave this unset for them.
+      config.temperature = ENV['LLM_TEMPERATURE']&.to_f
       config.max_tokens = ENV.fetch('LLM_MAX_TOKENS', '4000').to_i
       config.timeout = ENV.fetch('LLM_TIMEOUT', '60').to_i
     end
@@ -267,11 +360,10 @@ class ProductionRCrewAI < Sinatra::Base
     
     # Check LLM provider connectivity
     begin
-      # Quick LLM test
-      RCrewAI.client.chat(
+      # Quick LLM test. This is a billable call, so poll it infrequently.
+      RCrewAI::LLMClient.for_provider.chat(
         messages: [{ role: 'user', content: 'test' }],
-        max_tokens: 1,
-        temperature: 0
+        max_tokens: 1
       )
       checks[:checks][:llm] = { status: 'healthy' }
     rescue => e
@@ -317,42 +409,46 @@ class ProductionRCrewAI < Sinatra::Base
     start_time = Time.now
     execution_id = SecureRandom.uuid
     
-    logger.info "Starting execution", {
+    logger.info({
+      message: 'Starting execution',
       execution_id: execution_id,
       crew_name: crew.name,
       request_id: request_data['request_id']
-    }
+    }.to_json)
     
     begin
-      # Execute crew
-      result = crew.execute(
-        timeout: ENV.fetch('EXECUTION_TIMEOUT', '300').to_i,
-        max_retries: ENV.fetch('MAX_RETRIES', '3').to_i
-      )
+      # Execute crew. Failed tasks are reported in the result, not raised.
+      # Inputs reach your before_kickoff hooks, which can add them to task
+      # descriptions with task.enrich_description.
+      result = crew.execute(inputs: request_data.fetch('inputs', {}))
       
       duration = Time.now - start_time
       
-      logger.info "Execution completed", {
+      logger.info({
+        message: 'Execution completed',
         execution_id: execution_id,
         duration: duration,
         success_rate: result[:success_rate]
-      }
+      }.to_json)
       
       {
         execution_id: execution_id,
-        success: true,
+        success: result[:failed_tasks].zero?,
         duration: duration,
-        result: result
+        success_rate: result[:success_rate],
+        # Task objects aren't useful as JSON, so return plain values.
+        tasks: result[:results].map { |r| { name: r[:task].name, status: r[:status], result: r[:result] } }
       }
       
     rescue => e
       duration = Time.now - start_time
       
-      logger.error "Execution failed", {
+      logger.error({
+        message: 'Execution failed',
         execution_id: execution_id,
         duration: duration,
         error: e.message
-      }
+      }.to_json)
       
       raise
     end
@@ -370,112 +466,28 @@ class ProductionRCrewAI < Sinatra::Base
   end
 end
 
-class ValidationError < StandardError; end
-
-class CrewRegistry
-  def initialize
-    @crews = {}
-  end
-  
-  def register_crew(name, crew)
-    @crews[name] = crew
-  end
-  
-  def get_crew(name)
-    crew = @crews[name]
-    raise ValidationError, "Crew not found: #{name}" unless crew
-    crew
-  end
-  
-  def crew_exists?(name)
-    @crews.key?(name)
-  end
-  
-  def crew_count
-    @crews.length
-  end
-  
-  def register_default_crews
-    # Register your production crews here
-    support_crew = create_support_crew
-    register_crew('customer_support', support_crew)
-    
-    analysis_crew = create_analysis_crew  
-    register_crew('data_analysis', analysis_crew)
-  end
-  
-  private
-  
-  def create_support_crew
-    crew = RCrewAI::Crew.new("customer_support")
-    
-    support_agent = RCrewAI::Agent.new(
-      name: "support_specialist",
-      role: "Customer Support Specialist",
-      goal: "Provide excellent customer support and resolve issues efficiently",
-      tools: [
-        RCrewAI::Tools::WebSearch.new(max_results: 5),
-        RCrewAI::Tools::FileReader.new
-      ]
-    )
-    
-    crew.add_agent(support_agent)
-    
-    support_task = RCrewAI::Task.new(
-      name: "handle_support_request",
-      description: "Handle customer support request with empathy and expertise",
-      expected_output: "Professional support response with clear next steps"
-    )
-    
-    crew.add_task(support_task)
-    crew
-  end
-  
-  def create_analysis_crew
-    crew = RCrewAI::Crew.new("data_analysis")
-    
-    analyst = RCrewAI::Agent.new(
-      name: "data_analyst",
-      role: "Senior Data Analyst", 
-      goal: "Analyze data and provide actionable insights",
-      tools: [
-        RCrewAI::Tools::FileReader.new,
-        RCrewAI::Tools::WebSearch.new
-      ]
-    )
-    
-    crew.add_agent(analyst)
-    
-    analysis_task = RCrewAI::Task.new(
-      name: "data_analysis",
-      description: "Perform comprehensive data analysis and generate insights",
-      expected_output: "Detailed analysis report with charts and recommendations"
-    )
-    
-    crew.add_task(analysis_task)
-    crew
-  end
-end
-
-# Health check script for Docker
-# health_check.rb
-begin
-  require 'net/http'
-  
-  uri = URI('http://localhost:8080/health')
-  response = Net::HTTP.get_response(uri)
-  
-  exit(response.code == '200' ? 0 : 1)
-rescue
-  exit 1
-end
-
 # Start the application
 if __FILE__ == $0
   ProductionRCrewAI.run!(
     host: '0.0.0.0',
     port: ENV.fetch('PORT', 8080).to_i
   )
+end
+```
+
+The Dockerfile's health check runs a separate script:
+
+```ruby
+# health_check.rb
+require 'net/http'
+
+begin
+  uri = URI('http://localhost:8080/health')
+  response = Net::HTTP.get_response(uri)
+  
+  exit(response.code == '200' ? 0 : 1)
+rescue
+  exit 1
 end
 ```
 
@@ -494,12 +506,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - RAILS_ENV=production
+      - RACK_ENV=production
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LLM_PROVIDER=openai
+      - LLM_MODEL=gpt-4o
       - LLM_TEMPERATURE=0.1
-      - EXECUTION_TIMEOUT=300
-      - MAX_RETRIES=3
     depends_on:
       - redis
       - prometheus
@@ -585,7 +596,7 @@ spec:
         ports:
         - containerPort: 8080
         env:
-        - name: RAILS_ENV
+        - name: RACK_ENV
           value: "production"
         - name: OPENAI_API_KEY
           valueFrom:
@@ -598,10 +609,6 @@ spec:
           value: "openai"
         - name: LLM_TEMPERATURE
           value: "0.1"
-        - name: EXECUTION_TIMEOUT
-          value: "300"
-        - name: MAX_RETRIES
-          value: "3"
         resources:
           requests:
             memory: "256Mi"
@@ -697,10 +704,9 @@ metadata:
   name: rcrewai-config
 data:
   LLM_PROVIDER: "openai"
+  LLM_MODEL: "gpt-4o"
   LLM_TEMPERATURE: "0.1"
   LLM_MAX_TOKENS: "4000"
-  EXECUTION_TIMEOUT: "300"
-  MAX_RETRIES: "3"
   LOG_LEVEL: "INFO"
   METRICS_ENABLED: "true"
 ---
@@ -769,38 +775,25 @@ class ProductionConfig
     RCrewAI.configure do |config|
       # LLM Provider Configuration
       config.llm_provider = ENV.fetch('LLM_PROVIDER', 'openai').to_sym
+      config.model = ENV['LLM_MODEL'] if ENV['LLM_MODEL']
       
+      # Keys are read from OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY,
+      # and AZURE_OPENAI_API_KEY. Other providers use LLM_API_KEY.
       case config.llm_provider
       when :openai
-        config.openai_api_key = ENV.fetch('OPENAI_API_KEY')
         config.base_url = ENV['OPENAI_BASE_URL'] # Optional custom endpoint
-      when :anthropic
-        config.anthropic_api_key = ENV.fetch('ANTHROPIC_API_KEY')
       when :azure
-        config.azure_api_key = ENV.fetch('AZURE_OPENAI_API_KEY')
         config.base_url = ENV.fetch('AZURE_OPENAI_ENDPOINT')
-        config.api_version = ENV.fetch('AZURE_API_VERSION', '2023-05-15')
-      when :google
-        config.google_api_key = ENV.fetch('GOOGLE_API_KEY')
+        config.api_version = ENV.fetch('AZURE_API_VERSION', '2024-10-21')
+      when :bedrock
+        config.aws_region = ENV.fetch('AWS_REGION')
       end
       
-      # Model Parameters
-      config.temperature = ENV.fetch('LLM_TEMPERATURE', '0.1').to_f
+      # Model Parameters. Current Claude models reject `temperature`, so leave
+      # LLM_TEMPERATURE unset for them to omit it.
+      config.temperature = ENV['LLM_TEMPERATURE']&.to_f
       config.max_tokens = ENV.fetch('LLM_MAX_TOKENS', '4000').to_i
       config.timeout = ENV.fetch('LLM_TIMEOUT', '60').to_i
-      
-      # Production Settings
-      config.retry_limit = ENV.fetch('LLM_RETRY_LIMIT', '3').to_i
-      config.retry_delay = ENV.fetch('LLM_RETRY_DELAY', '2').to_i
-      config.max_concurrent_requests = ENV.fetch('MAX_CONCURRENT_REQUESTS', '10').to_i
-      
-      # Logging
-      config.log_level = ENV.fetch('LOG_LEVEL', 'INFO').upcase
-      config.structured_logging = ENV.fetch('STRUCTURED_LOGGING', 'true') == 'true'
-      
-      # Security
-      config.validate_ssl = ENV.fetch('VALIDATE_SSL', 'true') == 'true'
-      config.user_agent = "RCrewAI/#{RCrewAI::VERSION} (Production)"
     end
   end
   
@@ -851,7 +844,7 @@ class VaultClient
     secret = Vault.logical.read(path)
     secret&.data
   rescue Vault::VaultError => e
-    Rails.logger.error "Vault error: #{e.message}"
+    warn "Vault error: #{e.message}"
     raise
   end
   
@@ -871,7 +864,10 @@ class VaultClient
       ENV['OPENAI_API_KEY'] = new_secrets[:openai_api_key]
       ENV['ANTHROPIC_API_KEY'] = new_secrets[:anthropic_api_key]
       
-      # Reconfigure RCrewAI with new secrets
+      # Keys are read from the environment when the configuration is created,
+      # so reset it before configuring again. Clients that already exist keep
+      # the old configuration until they are rebuilt.
+      RCrewAI.reset_configuration!
       ProductionConfig.configure
     end
   end
@@ -887,7 +883,7 @@ Thread.new do
     begin
       vault_client.refresh_secrets
     rescue => e
-      Rails.logger.error "Secret refresh failed: #{e.message}"
+      warn "Secret refresh failed: #{e.message}"
     end
   end
 end
@@ -1051,7 +1047,7 @@ class StructuredLogger
       message: message,
       service: 'rcrewai',
       version: RCrewAI::VERSION,
-      environment: ENV.fetch('RAILS_ENV', 'development'),
+      environment: ENV.fetch('RACK_ENV', 'development'),
       process_id: Process.pid,
       thread_id: Thread.current.object_id
     }.merge(context)
@@ -1833,4 +1829,9 @@ echo "Disaster recovery completed"
 - Incident response playbooks
 - Regular performance reviews
 
-This production deployment guide provides a comprehensive foundation for running RCrewAI applications at scale with enterprise-grade reliability, security, and observability.
+Adapt these examples to your own stack. For observability built into the gem, see streaming events (`crew.execute(stream:)`) and the LLM interceptors. To survive restarts during long runs, see checkpointing (`crew.execute(checkpoint:)` and `crew.resume`).
+
+## Related
+
+- [Checkpointing]({{ site.baseurl }}/tutorials/checkpointing): resume a failed run without repeating finished tasks
+- [Interceptors and Events]({{ site.baseurl }}/tutorials/interceptors-and-events): send traces and cost data to your monitoring
