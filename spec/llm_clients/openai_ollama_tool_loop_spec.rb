@@ -124,7 +124,7 @@ RSpec.describe 'Replaying a tool loop on OpenAI-shaped providers' do
       def execute(text:) = "echoed #{text}"
     end
     sse = lambda do |*chunks|
-      chunks.map { |chunk| "data: #{chunk.to_json}\n\n" }.join + "data: [DONE]\n\n"
+      "#{chunks.map { |chunk| "data: #{chunk.to_json}\n\n" }.join}data: [DONE]\n\n"
     end
     tool_delta = { tool_calls: [{ index: 0, id: 'c1', type: 'function',
                                   function: { name: 'echo', arguments: '{"text":"hi"}' } }] }
