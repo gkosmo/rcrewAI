@@ -364,7 +364,7 @@ module RCrewAI
                 when 2 then 'abort'
                 else 'retry'
                 end,
-        reason: choice_result[:choice] || 'Default retry'
+        reason: choice_result[:choice] || 'No answer, so following max_retries'
       }
     end
 

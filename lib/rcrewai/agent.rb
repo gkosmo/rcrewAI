@@ -408,6 +408,9 @@ module RCrewAI
         timeout: 120
       )
 
+      # Nobody answered, so nobody asked for a retry or an abort.
+      raise error if choice_result[:no_response]
+
       case choice_result[:choice_index]
       when 0
         # Retry with same parameters
