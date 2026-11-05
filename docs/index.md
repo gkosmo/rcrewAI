@@ -290,14 +290,13 @@ RCrewAI.configure do |config|
   config.llm_provider = :anthropic
   config.anthropic_api_key = ENV['ANTHROPIC_API_KEY']
   config.anthropic_model = 'claude-opus-5-5'
-  config.temperature = nil # current Claude models reject temperature
 end
 
 # Google Gemini
 RCrewAI.configure do |config|
   config.llm_provider = :google
   config.google_api_key = ENV['GOOGLE_API_KEY']
-  config.google_model = 'gemini-2.5-flash'
+  config.google_model = 'gemini-3.8-flash'
 end
 
 # Azure OpenAI

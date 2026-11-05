@@ -21,9 +21,7 @@ manager = RCrewAI::Agent.new(name: 'manager', role: '...', goal: '...',
 ```
 
 Accepts a provider symbol, an options hash, or a pre-built client. Overrides
-never mutate the global configuration. Current Claude models reject `temperature`,
-so this example needs `config.temperature = nil` set globally; see
-[LLM Providers]({{ site.baseurl }}/tutorials/providers).
+never mutate the global configuration.
 
 ## Reasoning
 

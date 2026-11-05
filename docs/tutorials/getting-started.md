@@ -73,7 +73,6 @@ export ANTHROPIC_API_KEY="your-anthropic-key-here"
 RCrewAI.configure do |config|
   config.llm_provider = :anthropic
   config.model = 'claude-opus-5-5'
-  config.temperature = nil  # current Claude models reject `temperature`
 end
 ```
 
@@ -86,7 +85,7 @@ export GOOGLE_API_KEY="your-google-key-here"
 ```ruby
 RCrewAI.configure do |config|
   config.llm_provider = :google
-  config.model = 'gemini-2.5-flash'
+  config.model = 'gemini-3.8-flash'
 end
 ```
 
@@ -315,10 +314,10 @@ Now that you've created your first crew, explore these topics:
 **Solution**: Set the provider's environment variable, such as `OPENAI_API_KEY`, or assign it in `RCrewAI.configure`.
 
 **Issue**: A model-not-found error from the provider
-**Solution**: Set `config.model` to a model your account can use. The built-in defaults are old, and some have been retired by their providers.
+**Solution**: Set `config.model` to a model your account can use. Some built-in defaults are old, and providers retire models over time.
 
 **Issue**: A 400 error mentioning `temperature` on Claude
-**Solution**: Set `config.temperature = nil`. Current Claude models reject this parameter.
+**Solution**: Remove `config.temperature`, or set `temperature: nil` in that agent's `llm:`. Current Claude models reject this parameter.
 
 **Issue**: A task has status `failed`
 **Solution**: Check `task.result`, which holds the error message, and the log output. A task also fails if a task in its `context:` failed.

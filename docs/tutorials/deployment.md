@@ -271,7 +271,7 @@ class ProductionRCrewAI < Sinatra::Base
       config.model = ENV.fetch('LLM_MODEL', 'gpt-4o')
       # API keys are read from the provider's environment variable.
       # Current Claude models reject `temperature`: leave this unset for them.
-      config.temperature = ENV['LLM_TEMPERATURE']&.to_f
+      config.temperature = ENV['LLM_TEMPERATURE'].to_f if ENV['LLM_TEMPERATURE']
       config.max_tokens = ENV.fetch('LLM_MAX_TOKENS', '4000').to_i
       config.timeout = ENV.fetch('LLM_TIMEOUT', '60').to_i
     end
@@ -790,8 +790,8 @@ class ProductionConfig
       end
       
       # Model Parameters. Current Claude models reject `temperature`, so leave
-      # LLM_TEMPERATURE unset for them to omit it.
-      config.temperature = ENV['LLM_TEMPERATURE']&.to_f
+      # LLM_TEMPERATURE unset for them.
+      config.temperature = ENV['LLM_TEMPERATURE'].to_f if ENV['LLM_TEMPERATURE']
       config.max_tokens = ENV.fetch('LLM_MAX_TOKENS', '4000').to_i
       config.timeout = ENV.fetch('LLM_TIMEOUT', '60').to_i
     end

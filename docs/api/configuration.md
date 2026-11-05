@@ -79,7 +79,6 @@ RCrewAI.configure do |config|
   config.llm_provider = :anthropic
   config.anthropic_api_key = ENV['ANTHROPIC_API_KEY']
   config.anthropic_model = 'claude-opus-5-5'
-  config.temperature = nil # current Claude models reject temperature
   config.max_tokens = 4000
 end
 ```
@@ -90,7 +89,7 @@ end
 RCrewAI.configure do |config|
   config.llm_provider = :google
   config.google_api_key = ENV['GOOGLE_API_KEY']
-  config.google_model = 'gemini-2.5-flash'
+  config.google_model = 'gemini-3.8-flash'
   config.temperature = 0.1
   config.max_tokens = 4000
 end
@@ -159,7 +158,7 @@ RCrewAI.reset_configuration!
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `llm_provider` | Symbol | `:openai` | LLM provider to use |
-| `temperature` | Float | `0.1` | Sampling temperature (0.0 - 2.0) |
+| `temperature` | Float | `0.1` | Sampling temperature (0.0 - 2.0). Anthropic only receives a value you set |
 | `max_tokens` | Integer | `4000` | Maximum tokens in response |
 | `timeout` | Integer | `120` | Request timeout in seconds |
 | `base_url` | String | none | Endpoint for `:azure`, `:openai_compatible`, `:ollama` and `:anthropic` gateways (`LLM_BASE_URL`) |
@@ -184,12 +183,12 @@ RCrewAI.reset_configuration!
 | Option | Default | Description |
 |--------|---------|-------------|
 | `openai_model` | `gpt-4` | OpenAI model name |
-| `anthropic_model` | `claude-3-sonnet-20240229` | Anthropic model name |
-| `google_model` | `gemini-pro` | Google model name |
+| `anthropic_model` | `claude-opus-5-5` | Anthropic model name |
+| `google_model` | `gemini-3.8-flash` | Google model name |
 | `azure_model` | `gpt-4` | Azure OpenAI model name |
 | `model` | none | Used when the provider-specific option isn't set, and required for `:ollama`, `:openai_compatible`, `:bedrock` and `:snowflake` |
 
-These defaults are old, and the Anthropic and Google ones may no longer be served, so set a model explicitly. A model resolves as the provider-specific option, then `model`, then the default.
+The `gpt-4` defaults are old, so set a model explicitly for OpenAI and Azure. A model resolves as the provider-specific option, then `model`, then the default.
 
 ### Azure-Specific Settings
 
@@ -284,7 +283,7 @@ RCrewAI.reset_configuration!
 2. **Provider Selection**: Choose providers based on task requirements:
    - Azure, Bedrock, Snowflake: Your organization already uses that platform
    - Ollama: Privacy-sensitive or offline use
-3. **Temperature Settings** (not accepted by current Claude models; set `nil` for those):
+3. **Temperature Settings** (not accepted by current Claude models):
    - Low (0.1-0.3): Factual, consistent outputs
    - Medium (0.5-0.7): Balanced creativity and consistency  
    - High (0.8-1.0): Creative, varied outputs

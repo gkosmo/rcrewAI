@@ -57,7 +57,6 @@ class ProductionConfig
       when :anthropic
         config.anthropic_api_key = ENV.fetch('ANTHROPIC_API_KEY')
         config.anthropic_model = 'claude-opus-5-5'
-        config.temperature = nil  # Current Claude models reject temperature, so don't send it
       when :azure
         config.azure_api_key = ENV.fetch('AZURE_OPENAI_API_KEY')
         config.base_url = ENV.fetch('AZURE_OPENAI_ENDPOINT')

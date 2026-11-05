@@ -150,14 +150,13 @@ RCrewAI.configure do |config|
   config.llm_provider = :anthropic
   config.anthropic_api_key = ENV['ANTHROPIC_API_KEY']
   config.anthropic_model = 'claude-opus-5-5'
-  config.temperature = nil # current Claude models reject temperature
 end
 
 # Google Gemini
 RCrewAI.configure do |config|
   config.llm_provider = :google
   config.google_api_key = ENV['GOOGLE_API_KEY']
-  config.google_model = 'gemini-2.5-flash'
+  config.google_model = 'gemini-3.8-flash'
 end
 
 # Azure OpenAI
@@ -204,8 +203,6 @@ end
 There's also `:openai_responses`, which uses OpenAI's Responses API (no streaming) with your OpenAI model and key settings.
 
 ### Per-agent LLM
-
-Agents using current Claude models need `config.temperature = nil` set globally, because those models reject `temperature` and overrides inherit it.
 
 The `RCrewAI.configure` block sets the crew-wide default. Any agent can override
 it with the `llm:` option, so a single crew can mix providers and models — for
