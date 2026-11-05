@@ -2,6 +2,7 @@
 
 require 'securerandom'
 require_relative 'events'
+require_relative 'tool_execution'
 
 module RCrewAI
   # Behavior-preserving extraction of the prompt-parsed `USE_TOOL[]` /
@@ -17,6 +18,7 @@ module RCrewAI
       @tools = tools
       @max_iterations = max_iterations
       @sink = event_sink || ->(_) {}
+      @execution = ToolExecution.new(agent: agent, event_sink: @sink)
     end
 
     def run(messages:)
@@ -42,7 +44,7 @@ module RCrewAI
         reasoning = response[:content] || ''
         last_reasoning = reasoning
 
-        action_result, iteration_history = parse_and_execute_actions(reasoning, iter)
+        action_result, iteration_history, refused = parse_and_execute_actions(reasoning, iter)
         history.concat(iteration_history)
         last_action_result = action_result
 
@@ -52,6 +54,8 @@ module RCrewAI
         finish_reason = response[:finish_reason]
         emit(Events::IterationEnd, iteration: iter, finish_reason: finish_reason)
 
+        # A refusal has to reach the model, even if this turn looks finished.
+        next if refused
         next unless task_complete?(reasoning, action_result) || finish_reason == :stop
 
         final = extract_final_result(reasoning, action_result)
@@ -74,6 +78,7 @@ module RCrewAI
     def parse_and_execute_actions(reasoning, iter)
       results = []
       iteration_history = []
+      refused = false
       reasoning.scan(/USE_TOOL\[(\w+)\]\(([^)]*)\)/).each do |tool_name, params_str|
         params = parse_tool_params(params_str)
         tool = find_tool(tool_name)
@@ -90,13 +95,17 @@ module RCrewAI
 
         started = monotonic_ms
         begin
-          result = tool.execute(**params)
+          result = @execution.call(tool, params, iteration: iter, coerce: false)
           duration = monotonic_ms - started
           @agent.memory.add_tool_usage(tool_name, params, result) if @agent.respond_to?(:memory) && @agent.memory
           emit(Events::ToolCallResult, iteration: iter, tool: tool_name,
                                        call_id: nil, result: result, duration_ms: duration)
           iteration_history << { tool: tool_name, args: params, result: result, duration_ms: duration }
           results << "Tool #{tool_name} result: #{result}"
+        rescue ToolApproval::Refused => e
+          refused = true
+          emit(Events::ToolCallError, iteration: iter, tool: tool_name, call_id: nil, error: e.message)
+          results << e.message
         rescue StandardError => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name,
                                       call_id: nil, error: e.message)
@@ -104,7 +113,7 @@ module RCrewAI
         end
       end
 
-      [results.join("\n"), iteration_history]
+      [results.join("\n"), iteration_history, refused]
     end
 
     def parse_tool_params(params_str)

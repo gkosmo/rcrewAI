@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Breaking:** an agent with `require_approval_for_tools: true` now runs no tool without an explicit yes. Unattended runs that relied on the old behaviour will have their tool calls refused until you give the agent an `approval_handler`. Agents that don't set the option are unaffected.
+
+### Security
+- **`require_approval_for_tools` was not enforced during task runs.** The check lived only in `Agent#use_tool`, which task runs don't call, so `ToolRunner` and `LegacyReactRunner` ran every tool without asking. All tool execution now goes through `RCrewAI::ToolExecution`, including `use_tool` and its retries after a failure.
+- **Without a terminal, approvals answered themselves.** `HumanInput` returned `yes` for approvals and confirmations, so a background job approved its own actions. They are now refused.
+- **Terminal approval answers matched as substrings.** `deny` contains `y`, so it counted as yes, as did `not ok` and anything not starting with `n`. The whole answer must now be an approval keyword (`yes`, `y`, `approve`, `ok`, `continue`, or your `approval_keywords`). Anything else is a refusal.
+
+### Added
+- `approval_handler:` on `Agent`, and `config.approval_handler` as a global default. A handler receives an `RCrewAI::ToolApproval::Request` with `tool_name` and `arguments`, and answers `true`, `RCrewAI::ToolApproval.approve` or `RCrewAI::ToolApproval.refuse(reason)`. Any other answer, an exception or a timeout is a refusal. To keep the old unattended behaviour on purpose, pass `approval_handler: ->(_) { true }`.
+- `approval_timeout:` on `Agent` and `config.approval_timeout`, default 60 seconds.
+- `Events::ToolApprovalRequested` and `Events::ToolApprovalDecided`.
+
+### Changed
+- **Behavior change:** `require_approval_for_tools` no longer also needs `human_input: true`.
+- **Behavior change:** a refused tool call goes back to the model as a tool result beginning `REFUSED:`, and the run carries on. The tool doesn't appear in `tool_calls_history`, and `ToolCallError` closes its `ToolCallStart`.
+- **Behavior change:** `disable_human_input` no longer turns approval off, and neither does `enable_human_input` unless you pass `require_approval_for_tools: false`. `Task` with `human_input: true` used to clear the setting on its agent for good. Use `agent.require_approval_for_tools = false` to turn it off.
+- **Behavior change:** without a terminal, `HumanInput` no longer invents answers. `request_input`, `request_choice`, `request_review` and `get_feedback` return `nil` values with `no_response: true`. `Flow#human_feedback` returns `nil` instead of `"Default response - non-interactive mode"`, a `Task` with `require_confirmation` is cancelled, and a failed tool in `use_tool` raises its own error instead of retrying.
+- An empty answer no longer selects the first option in `request_choice`.
+
 ## [0.11.0] - 2026-11-05
 
 Makes agents with tools work on real providers, and current Claude models usable. Requests after a tool call were malformed on every provider since 0.3.0, because specs stubbed the LLM and never checked the real request.

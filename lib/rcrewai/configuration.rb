@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'tool_approval'
+
 module RCrewAI
   class Configuration
     # Used when neither +<provider>_model+ nor +model+ has been set.
@@ -22,7 +24,8 @@ module RCrewAI
                   :openai_api_key, :anthropic_api_key, :google_api_key, :azure_api_key,
                   :base_url, :api_version, :deployment_name,
                   :aws_region, :snowflake_account,
-                  :pricing, :ollama_native_tools, :log_level
+                  :pricing, :ollama_native_tools, :log_level,
+                  :approval_handler, :approval_timeout
     attr_writer :openai_model, :anthropic_model, :google_model, :azure_model
 
     DEFAULT_MODELS.each do |provider, default|
@@ -40,6 +43,8 @@ module RCrewAI
       @pricing = nil
       @ollama_native_tools = nil
       @log_level = :info
+      @approval_handler = nil
+      @approval_timeout = ToolApproval::DEFAULT_TIMEOUT
 
       # Load from environment variables
       load_from_env

@@ -135,6 +135,8 @@ puts "✅ Crew completed #{results[:completed_tasks]}/#{results[:total_tasks]} t
 - **Delegation Systems**: Automatic task assignment based on agent capabilities
 - **Process Types**: Sequential, hierarchical, and consensual execution modes
 
+With `require_approval_for_tools: true`, no tool runs without an explicit yes, on any provider. Without a terminal or an `approval_handler`, every tool call is refused, so give background jobs a handler. See [tool approval](docs/examples/human-in-the-loop.md#2-tool-approval-workflows).
+
 ## 🔧 LLM Provider Support
 
 ```ruby
