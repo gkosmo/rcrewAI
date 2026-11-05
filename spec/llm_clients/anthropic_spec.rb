@@ -13,6 +13,49 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
   end
   let(:client) { described_class.new(config) }
 
+  describe 'temperature' do
+    let(:reply) do
+      { status: 200, headers: { 'Content-Type' => 'application/json' },
+        body: { model: 'm', stop_reason: 'end_turn', content: [{ type: 'text', text: 'hi' }],
+                usage: { input_tokens: 1, output_tokens: 1 } }.to_json }
+    end
+    let(:fresh) do
+      RCrewAI::Configuration.new.tap do |c|
+        c.llm_provider = :anthropic
+        c.anthropic_api_key = 'k'
+      end
+    end
+
+    def sent_body(chat_config, **options)
+      body = nil
+      stub_request(:post, 'https://api.anthropic.com/v1/messages')
+        .to_return do |r|
+        body = JSON.parse(r.body)
+        reply
+      end
+      described_class.new(chat_config).chat(messages: [{ role: 'user', content: 'x' }], **options)
+      body
+    end
+
+    it 'leaves temperature out when nobody set one' do
+      expect(sent_body(fresh)).not_to have_key('temperature')
+    end
+
+    it 'sends a temperature the user configured' do
+      fresh.temperature = 0.7
+      expect(sent_body(fresh)['temperature']).to eq(0.7)
+    end
+
+    it 'sends a per-call temperature' do
+      expect(sent_body(fresh, temperature: 0.3)['temperature']).to eq(0.3)
+    end
+
+    it 'lets a per-agent override clear a global temperature' do
+      fresh.temperature = 0.7
+      expect(sent_body(fresh.with_overrides(temperature: nil))).not_to have_key('temperature')
+    end
+  end
+
   describe 'replaying a tool loop' do
     let(:raw) do
       [{ 'type' => 'thinking', 'thinking' => '', 'signature' => 'sig' },

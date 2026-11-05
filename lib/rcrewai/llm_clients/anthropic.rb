@@ -36,7 +36,7 @@ module RCrewAI
           model: options[:model] || config.model,
           messages: format_messages(non_system).map { |m| m.except(:tool_results) },
           max_tokens: options[:max_tokens] || config.max_tokens || 1000,
-          temperature: options[:temperature] || config.temperature
+          temperature: options[:temperature] || config.explicit_temperature
         }.compact
 
         if system_message
@@ -71,8 +71,9 @@ module RCrewAI
 
       def models
         %w[
-          claude-opus-4-7 claude-sonnet-4-6 claude-haiku-4-5
-          claude-3-5-sonnet-20241022 claude-3-haiku-20240307
+          claude-fable-5-1 claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5
+          claude-opus-5 claude-sonnet-5 claude-opus-4-8 claude-opus-4-7
+          claude-sonnet-4-6 claude-haiku-4-5
         ]
       end
 

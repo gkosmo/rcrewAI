@@ -173,6 +173,32 @@ RSpec.describe RCrewAI::Configuration do
     end
   end
 
+  describe '#explicit_temperature' do
+    it 'is nil until a temperature is set' do
+      expect(config.temperature).to eq(described_class::DEFAULT_TEMPERATURE)
+      expect(config.explicit_temperature).to be_nil
+    end
+
+    it 'returns a temperature the user set, even if it equals the default' do
+      config.temperature = described_class::DEFAULT_TEMPERATURE
+
+      expect(config.explicit_temperature).to eq(described_class::DEFAULT_TEMPERATURE)
+    end
+  end
+
+  describe 'default models' do
+    it 'uses current Anthropic and Google models' do
+      expect(described_class::DEFAULT_MODELS).to include(anthropic: 'claude-opus-5-5', google: 'gemini-3.8-flash')
+    end
+
+    it 'has a price and context window for each default Anthropic and Google model' do
+      described_class::DEFAULT_MODELS.values_at(:anthropic, :google).each do |model|
+        expect(RCrewAI::Pricing::DEFAULT_PRICES).to have_key(model)
+        expect(RCrewAI::ContextWindow::WINDOWS).to have_key(model)
+      end
+    end
+  end
+
   describe '#with_overrides' do
     let(:base) do
       described_class.new.tap do |c|
@@ -227,6 +253,17 @@ RSpec.describe RCrewAI::Configuration do
 
       expect(overridden.model).to eq('gpt-5')
       expect(base.openai_model).to eq('gpt-4o')
+    end
+
+    it 'can clear the temperature with an explicit nil' do
+      overridden = base.with_overrides(temperature: nil)
+
+      expect(overridden.temperature).to be_nil
+      expect(base.temperature).to eq(0.1)
+    end
+
+    it 'keeps the temperature when no override is given' do
+      expect(base.with_overrides(provider: :anthropic).temperature).to eq(0.1)
     end
 
     it 'overrides temperature' do

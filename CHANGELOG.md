@@ -13,8 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `:ollama` no longer requires an API key in `RCrewAI.configure`, so a local setup works without a placeholder key. A model is still required.
 - `:openai_responses` ignored `openai_model` and always sent `gpt-4`, and its `api_key` ignored `openai_api_key`. It now shares both with `:openai`.
 - `Configuration#supported_providers` listed 5 providers; it now reports all 9.
+- **Anthropic tool loops sent malformed history.** After a tool call the client dropped `tool_calls`, sent the assistant turn as `content: null`, and sent results as plain user text. It now sends `tool_use` and `tool_result` blocks, with one turn's results in one user message. Responses carry `raw_content`, which `ToolRunner` replays so thinking blocks come back unchanged.
+- **Current Claude models rejected every request,** because the client always sent `temperature` and the default was `0.1`. It now sends only a temperature you set. `Configuration#explicit_temperature` reports it. Two internal calls that hardcoded `temperature: 0.2` no longer do, so on other providers they use your configured temperature.
+- `with_overrides(temperature: nil)` and `llm: { temperature: nil }` now clear a global temperature; `nil` used to be ignored.
+- Corrected Anthropic prices that were out of date (`claude-opus-4-7`, `claude-haiku-4-5`) and Anthropic context windows.
 
 ### Changed
+- **Behavior change:** `:anthropic` now defaults to `claude-opus-5-5` and `:google` to `gemini-3.8-flash`, replacing retired models. Added prices and context windows for current Claude and Gemini models.
 - **Behavior change:** providers with no default model (`:ollama`, `:openai_compatible`, `:bedrock`, `:snowflake`) now raise `ConfigurationError` when no model is set, instead of sending `gpt-4`, which those endpoints would not generally serve.
 
 ## [0.10.0] - 2026-10-19

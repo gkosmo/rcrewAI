@@ -5,15 +5,20 @@ module RCrewAI
     # Used when neither +<provider>_model+ nor +model+ has been set.
     DEFAULT_MODELS = {
       openai: 'gpt-4',
-      anthropic: 'claude-3-sonnet-20240229',
-      google: 'gemini-pro',
+      anthropic: 'claude-opus-5-5',
+      google: 'gemini-3.8-flash',
       azure: 'gpt-4'
     }.freeze
+
+    # Sent by providers that take a temperature when none has been set. The
+    # Anthropic client sends only #explicit_temperature, because current Claude
+    # models reject the field.
+    DEFAULT_TEMPERATURE = 0.1
 
     # Providers that authenticate some other way, or not at all.
     KEYLESS_PROVIDERS = %i[ollama].freeze
 
-    attr_accessor :llm_provider, :api_key, :model, :temperature, :max_tokens, :timeout,
+    attr_accessor :llm_provider, :api_key, :model, :max_tokens, :timeout,
                   :openai_api_key, :anthropic_api_key, :google_api_key, :azure_api_key,
                   :base_url, :api_version, :deployment_name,
                   :aws_region, :snowflake_account,
@@ -26,7 +31,6 @@ module RCrewAI
 
     def initialize
       @llm_provider = :openai
-      @temperature = 0.1
       @max_tokens = 4000
       @timeout = 120
 
@@ -39,6 +43,20 @@ module RCrewAI
 
       # Load from environment variables
       load_from_env
+    end
+
+    def temperature
+      @temperature_set ? @temperature : DEFAULT_TEMPERATURE
+    end
+
+    def temperature=(value)
+      @temperature = value
+      @temperature_set = true
+    end
+
+    # The temperature the user chose, or nil if they never set one.
+    def explicit_temperature
+      @temperature if @temperature_set
     end
 
     def api_key
@@ -68,8 +86,10 @@ module RCrewAI
     # applied. The original configuration is left untouched, so agents can each
     # target a different provider/model without mutating global state.
     #
-    #   config.with_overrides(provider: :anthropic, model: 'claude-3-opus-20240229')
-    def with_overrides(provider: nil, model: nil, api_key: nil, temperature: nil)
+    #   config.with_overrides(provider: :anthropic, model: 'claude-opus-5-5')
+    #
+    # Pass temperature: nil to clear a global temperature for this copy.
+    def with_overrides(provider: nil, model: nil, api_key: nil, temperature: :inherit)
       copy = dup
       copy.llm_provider = provider.to_sym if provider
       target = copy.llm_provider
@@ -85,7 +105,7 @@ module RCrewAI
       copy.public_send("#{target}_api_key=", api_key) if api_key && copy.respond_to?("#{target}_api_key=")
       copy.api_key = api_key if api_key
 
-      copy.temperature = temperature unless temperature.nil?
+      copy.temperature = temperature unless temperature == :inherit
       copy
     end
 
