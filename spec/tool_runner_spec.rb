@@ -20,6 +20,26 @@ RSpec.describe RCrewAI::ToolRunner do
            require_approval_for_tools?: false)
   end
 
+  it 'passes raw_content back to the LLM on the next turn' do
+    raw = [{ 'type' => 'thinking', 'thinking' => '', 'signature' => 'sig' }]
+    responses = [
+      { content: nil, tool_calls: [{ id: 'c1', name: 'echo', arguments: { 'msg' => 'hi' } }], raw_content: raw,
+        usage: {}, finish_reason: :tool_calls, model: 'm', provider: :test },
+      { content: 'Done.', tool_calls: [], usage: {}, finish_reason: :stop, model: 'm', provider: :test }
+    ]
+    seen = []
+    llm = double('LLM')
+    allow(llm).to receive(:chat) do |messages:, **|
+      seen << messages.dup
+      responses.shift
+    end
+
+    described_class.new(agent: agent, llm: llm, tools: [tool])
+                   .run(messages: [{ role: 'user', content: 'echo hi' }])
+
+    expect(seen.last.find { |m| m[:role] == 'assistant' }[:raw_content]).to eq(raw)
+  end
+
   context 'when LLM responds with a tool_call then a final answer' do
     let(:llm) do
       responses = [

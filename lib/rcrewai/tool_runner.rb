@@ -50,7 +50,11 @@ module RCrewAI
                           finish_reason: response[:finish_reason], usage: total_usage)
         end
 
-        msgs << { role: 'assistant', content: response[:content], tool_calls: response[:tool_calls] }
+        assistant = { role: 'assistant', content: response[:content], tool_calls: response[:tool_calls] }
+        # Providers that must see their own response replayed verbatim (Anthropic
+        # thinking blocks) return it here.
+        assistant[:raw_content] = response[:raw_content] if response[:raw_content]
+        msgs << assistant
 
         run_tool_calls(response[:tool_calls], iter).each do |outcome|
           history << outcome[:history] if outcome[:history]

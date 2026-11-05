@@ -13,6 +13,103 @@ RSpec.describe RCrewAI::LLMClients::Anthropic do
   end
   let(:client) { described_class.new(config) }
 
+  describe 'replaying a tool loop' do
+    let(:raw) do
+      [{ 'type' => 'thinking', 'thinking' => '', 'signature' => 'sig' },
+       { 'type' => 'tool_use', 'id' => 'tu_1', 'name' => 'echo', 'input' => { 'text' => 'hi' } },
+       { 'type' => 'tool_use', 'id' => 'tu_2', 'name' => 'echo', 'input' => { 'text' => 'yo' } }]
+    end
+    let(:reply) do
+      { status: 200, headers: { 'Content-Type' => 'application/json' },
+        body: { model: 'm', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }],
+                usage: { input_tokens: 1, output_tokens: 1 } }.to_json }
+    end
+
+    def sent_messages(history)
+      body = nil
+      stub_request(:post, 'https://api.anthropic.com/v1/messages')
+        .to_return do |r|
+        body = JSON.parse(r.body)
+        reply
+      end
+      client.chat(messages: history)
+      body['messages']
+    end
+
+    let(:tool_results) do
+      [{ role: 'tool', tool_call_id: 'tu_1', content: 'hi' },
+       { role: 'tool', tool_call_id: 'tu_2', content: 'yo' }]
+    end
+
+    it 'replays the assistant blocks unchanged, including thinking' do
+      messages = sent_messages([{ role: 'user', content: 'go' },
+                                { role: 'assistant', content: nil, tool_calls: [], raw_content: raw },
+                                *tool_results])
+
+      expect(messages[1]).to eq('role' => 'assistant', 'content' => raw)
+    end
+
+    it 'sends every tool result in one user message' do
+      messages = sent_messages([{ role: 'user', content: 'go' },
+                                { role: 'assistant', content: nil, tool_calls: [], raw_content: raw },
+                                *tool_results])
+
+      expect(messages.size).to eq(3)
+      expect(messages[2]).to eq(
+        'role' => 'user',
+        'content' => [
+          { 'type' => 'tool_result', 'tool_use_id' => 'tu_1', 'content' => 'hi' },
+          { 'type' => 'tool_result', 'tool_use_id' => 'tu_2', 'content' => 'yo' }
+        ]
+      )
+    end
+
+    it 'builds tool_use blocks when a history has no raw content' do
+      messages = sent_messages([{ role: 'user', content: 'go' },
+                                { role: 'assistant', content: 'Checking.',
+                                  tool_calls: [{ id: 'tu_1', name: 'echo', arguments: { 'text' => 'hi' } }] },
+                                { role: 'tool', tool_call_id: 'tu_1', content: 'hi' }])
+
+      expect(messages[1]['content']).to eq(
+        [{ 'type' => 'text', 'text' => 'Checking.' },
+         { 'type' => 'tool_use', 'id' => 'tu_1', 'name' => 'echo', 'input' => { 'text' => 'hi' } }]
+      )
+    end
+
+    it 'returns raw content blocks from a plain response' do
+      stub_request(:post, 'https://api.anthropic.com/v1/messages')
+        .to_return(status: 200, headers: { 'Content-Type' => 'application/json' },
+                   body: { model: 'm', stop_reason: 'tool_use', content: raw,
+                           usage: { input_tokens: 1, output_tokens: 1 } }.to_json)
+
+      expect(client.chat(messages: [{ role: 'user', content: 'x' }])[:raw_content]).to eq(raw)
+    end
+
+    it 'reassembles raw content blocks from a stream' do
+      sse = [
+        { type: 'message_start', message: { usage: { input_tokens: 1 } } },
+        { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'hm' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig' } },
+        { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+        { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Checking.' } },
+        { type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 'tu_1', name: 'echo', input: {} } },
+        { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"text":"hi"}' } },
+        { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 2 } }
+      ].map { |e| "event: #{e[:type]}\ndata: #{e.to_json}\n\n" }.join
+      stub_request(:post, 'https://api.anthropic.com/v1/messages')
+        .to_return(status: 200, body: sse, headers: { 'Content-Type' => 'text/event-stream' })
+
+      result = client.chat(messages: [{ role: 'user', content: 'x' }], stream: ->(_) {})
+
+      expect(result[:raw_content]).to eq(
+        [{ 'type' => 'thinking', 'thinking' => 'hm', 'signature' => 'sig' },
+         { 'type' => 'text', 'text' => 'Checking.' },
+         { 'type' => 'tool_use', 'id' => 'tu_1', 'name' => 'echo', 'input' => { 'text' => 'hi' } }]
+      )
+    end
+  end
+
   it 'sends tools at top level with input_schema and parses tool_use blocks' do
     tool_schema = {
       name: 'web_search', description: 'Search',
