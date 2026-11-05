@@ -75,6 +75,13 @@ module RCrewAI
         end
       end
 
+      # Takes the call a tool result answers out of +pending+: by id when there
+      # is one, otherwise the oldest, since results come back in call order.
+      def take_tool_call(pending, tool_call_id)
+        index = pending.index { |call| call[:id] && call[:id] == tool_call_id } || 0
+        pending.delete_at(index)
+      end
+
       def hook_context
         { provider: provider_name, model: config.model }
       end
