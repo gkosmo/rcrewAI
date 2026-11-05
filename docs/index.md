@@ -52,7 +52,7 @@ per-release upgrade guides (e.g. [upgrading to 0.7](https://github.com/gkosmo/rc
 - **[Concurrency]({{ site.baseurl }}/tutorials/concurrency)**: parallel tool calls, consensus rounds and embeddings, each with a limit
 - **[Live streaming]({{ site.baseurl }}/tutorials/live-streaming)**: cancellable Anthropic streams with connection reuse
 
-Upgrading? See [what to check]({{ site.baseurl }}/upgrading-to-0.10).
+Upgrading? See [what to check]({{ site.baseurl }}/upgrading-to-0.11).
 
 ## Quick Start
 
