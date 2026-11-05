@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Behavior change:** `config.model = '...'` was silently ignored for `:openai`, `:anthropic`, `:google` and `:azure`, because each provider's default model took precedence over it. A model now resolves as an explicit `<provider>_model`, then `model`, then the provider default. If your config sets `model` and you have been unknowingly running on a default, you will now get the model you asked for.
+- A global `config.model` no longer follows an agent that switches provider with `llm: :anthropic`; that agent uses its own provider's model.
+- `:ollama` no longer requires an API key in `RCrewAI.configure`, so a local setup works without a placeholder key. A model is still required.
+- `:openai_responses` ignored `openai_model` and always sent `gpt-4`, and its `api_key` ignored `openai_api_key`. It now shares both with `:openai`.
+- `Configuration#supported_providers` listed 5 providers; it now reports all 9.
+
+### Changed
+- **Behavior change:** providers with no default model (`:ollama`, `:openai_compatible`, `:bedrock`, `:snowflake`) now raise `ConfigurationError` when no model is set, instead of sending `gpt-4`, which those endpoints would not generally serve.
+
 ## [0.10.0] - 2026-10-19
 
 ### Added

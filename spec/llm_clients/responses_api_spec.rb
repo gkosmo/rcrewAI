@@ -36,6 +36,15 @@ RSpec.describe RCrewAI::LLMClients::OpenAIResponses do
     expect(stub).to have_been_requested
   end
 
+  it 'sends the configured OpenAI model' do
+    stub = stub_request(:post, url).with(body: hash_including('model' => 'gpt-5'))
+                                   .to_return(status: 200, body: body, headers: { 'Content-Type' => 'application/json' })
+
+    client.chat(messages: [{ role: 'user', content: 'hi' }])
+
+    expect(stub).to have_been_requested
+  end
+
   it 'sends messages under the input key' do
     stub = stub_request(:post, url)
            .with(body: hash_including(
