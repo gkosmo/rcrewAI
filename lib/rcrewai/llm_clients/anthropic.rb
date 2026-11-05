@@ -34,9 +34,9 @@ module RCrewAI
 
         payload = {
           model: options[:model] || config.model,
-          messages: format_messages(non_system),
+          messages: format_messages(non_system).map { |m| m.except(:tool_results) },
           max_tokens: options[:max_tokens] || config.max_tokens || 1000,
-          temperature: options[:temperature] || config.temperature
+          temperature: options[:temperature] || config.explicit_temperature
         }.compact
 
         if system_message
@@ -71,8 +71,9 @@ module RCrewAI
 
       def models
         %w[
-          claude-opus-4-7 claude-sonnet-4-6 claude-haiku-4-5
-          claude-3-5-sonnet-20241022 claude-3-haiku-20240307
+          claude-fable-5-1 claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5
+          claude-opus-5 claude-sonnet-5 claude-opus-4-8 claude-opus-4-7
+          claude-sonnet-4-6 claude-haiku-4-5
         ]
       end
 
@@ -102,6 +103,8 @@ module RCrewAI
         assembled_text = +''
         # tool_use blocks keyed by content-block index
         blocks = {}
+        # Every content block as the API sent it, for replay in a tool loop
+        raw_blocks = {}
         finish_reason = nil
         prompt_tokens = nil
         cached_tokens = nil
@@ -115,9 +118,11 @@ module RCrewAI
             cached_tokens = data.dig('message', 'usage', 'cache_read_input_tokens')
           when 'content_block_start'
             cb = data['content_block'] || {}
+            raw_blocks[data['index']] = cb.dup
             blocks[data['index']] = { id: cb['id'], name: cb['name'], arguments: +'' } if cb['type'] == 'tool_use'
           when 'content_block_delta'
             delta = data['delta'] || {}
+            merge_raw_delta(raw_blocks[data['index']], delta)
             case delta['type']
             when 'text_delta'
               text = delta['text'].to_s
@@ -166,6 +171,7 @@ module RCrewAI
         result = {
           content: assembled_text.empty? ? nil : assembled_text,
           tool_calls: tool_calls,
+          raw_content: assemble_raw_blocks(raw_blocks, tool_calls),
           usage: usage,
           finish_reason: finish_reason || :stop,
           model: payload[:model],
@@ -175,6 +181,26 @@ module RCrewAI
       end
 
       # Streams over one kept-alive connection per client (see PersistentHTTP).
+      def merge_raw_delta(block, delta)
+        return unless block
+
+        case delta['type']
+        when 'text_delta' then block['text'] = "#{block['text']}#{delta['text']}"
+        when 'thinking_delta' then block['thinking'] = "#{block['thinking']}#{delta['thinking']}"
+        when 'signature_delta' then block['signature'] = "#{block['signature']}#{delta['signature']}"
+        end
+      end
+
+      # Tool arguments arrive as JSON fragments, already parsed into tool_calls.
+      def assemble_raw_blocks(raw_blocks, tool_calls)
+        raw_blocks.sort.map do |_index, block|
+          next block unless block['type'] == 'tool_use'
+
+          call = tool_calls.find { |c| c[:id] == block['id'] }
+          block.merge('input' => call ? call[:arguments] : {})
+        end
+      end
+
       def streaming_post(payload, cancel: nil, &on_chunk)
         uri = URI("#{@base_url}/messages")
         response = streaming_connection.post_stream(
@@ -201,6 +227,7 @@ module RCrewAI
         {
           content: text.empty? ? nil : text,
           tool_calls: tool_calls,
+          raw_content: content_blocks,
           usage: {
             prompt_tokens: prompt_tokens,
             completion_tokens: completion_tokens,
@@ -227,12 +254,36 @@ module RCrewAI
       end
 
       def format_messages(messages)
-        messages.map do |msg|
-          if msg.is_a?(Hash)
-            { role: msg[:role] == 'assistant' ? 'assistant' : 'user', content: msg[:content] }
-          else
-            { role: 'user', content: msg.to_s }
+        messages.each_with_object([]) do |msg, out|
+          next out << { role: 'user', content: msg.to_s } unless msg.is_a?(Hash)
+
+          case msg[:role].to_s
+          when 'assistant' then out << { role: 'assistant', content: assistant_content(msg) }
+          when 'tool' then append_tool_result(out, msg)
+          else out << { role: 'user', content: msg[:content] }
           end
+        end
+      end
+
+      # A tool loop must replay the model's blocks unchanged, including thinking.
+      def assistant_content(msg)
+        return msg[:raw_content] if msg[:raw_content]
+        return msg[:content] if msg[:tool_calls].nil? || msg[:tool_calls].empty?
+
+        text = msg[:content].to_s.empty? ? [] : [{ type: 'text', text: msg[:content] }]
+        text + msg[:tool_calls].map do |call|
+          { type: 'tool_use', id: call[:id], name: call[:name], input: call[:arguments] || {} }
+        end
+      end
+
+      # Results from one turn belong together in a single user message.
+      def append_tool_result(out, msg)
+        block = { type: 'tool_result', tool_use_id: msg[:tool_call_id], content: msg[:content] }
+        last = out.last
+        if last && last[:tool_results]
+          last[:content] << block
+        else
+          out << { role: 'user', content: [block], tool_results: true }
         end
       end
 

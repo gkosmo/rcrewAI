@@ -34,13 +34,12 @@ end
 RCrewAI.configure do |config|
   config.llm_provider = :anthropic
   config.anthropic_model = 'claude-opus-5-5'
-  config.temperature = nil # current Claude models reject temperature
 end
 
 # Google
 RCrewAI.configure do |config|
   config.llm_provider = :google
-  config.google_model = 'gemini-2.5-flash'
+  config.google_model = 'gemini-3.8-flash'
 end
 
 # Azure OpenAI
@@ -86,9 +85,11 @@ end
 
 ## Provider limitations
 
-- **Anthropic and `temperature`:** the client sends `config.temperature`, which
-  defaults to `0.1`, and current Claude models reject it. Set
-  `config.temperature = nil` to leave it out.
+- **Anthropic and `temperature`:** current Claude models reject `temperature`, so the
+  client only sends one you set yourself. If you set `config.temperature` for other
+  providers, clear it on Claude agents with `llm: { provider: :anthropic, temperature: nil }`.
+- **Anthropic and `max_tokens`:** current Claude models always think, and thinking counts
+  toward `max_tokens` (default 4000). Raise it if replies get cut off.
 - **Bedrock auth:** `api_key` is sent as a bearer token, which covers Bedrock API
   keys and gateways in front of Bedrock. SigV4 signing isn't built in; you can sign
   requests yourself in a [`before_request` hook]({{ site.baseurl }}/tutorials/interceptors-and-events).
@@ -110,6 +111,5 @@ analyst = RCrewAI::Agent.new(name: 'analyst', role: 'Analyst', goal: 'Analyze',
 `llm:` also takes a pre-built client. An override never changes the global
 configuration.
 
-An override inherits the global `temperature`, and passing `temperature: nil` doesn't
-clear it. To use a current Claude model on one agent, set `config.temperature = nil`
-globally, then give each agent that needs a temperature its own value.
+An override inherits the global `temperature` unless it sets its own. `temperature: nil`
+clears it.

@@ -35,16 +35,11 @@ RCrewAI.configure do |config|
   config.model = 'gpt-4o'
 end
 
-# Current Claude models reject `temperature`, so this agent's client is built
-# from a configuration that doesn't send it. See "Building a client" below.
-reviewer_config = RCrewAI.configuration.with_overrides(provider: :anthropic, model: 'claude-opus-5-5')
-reviewer_config.temperature = nil
-
 reviewer = RCrewAI::Agent.new(
   name: 'reviewer',
   role: 'Principal Engineer',
   goal: 'Find defects before they ship',
-  llm: RCrewAI::LLMClient.for_provider(:anthropic, reviewer_config)
+  llm: { provider: :anthropic, model: 'claude-opus-5-5' }
 )
 
 # Provider and model only, using that provider's configured key.
@@ -61,10 +56,9 @@ summarizer = RCrewAI::Agent.new(
 the global configuration. An agent that switches provider doesn't inherit a
 global `config.model`: it uses its own provider's model.
 
-**Building a client.** A `temperature:` override can set a value but not remove
-one, which is why the Claude example above builds its client from a modified
-configuration. If Anthropic is your global provider, setting
-`config.temperature = nil` in `RCrewAI.configure` is enough.
+**Temperature.** Current Claude models reject `temperature`, so the Anthropic
+client only sends one you set. If you set a global `config.temperature`, clear it
+for a Claude agent with `llm: { provider: :anthropic, temperature: nil }`.
 
 ## Memory
 

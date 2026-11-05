@@ -38,3 +38,17 @@ The next release changes how configuration resolves:
   Without one they raise `ConfigurationError` rather than sending `gpt-4`.
 - **`:ollama` no longer needs an API key,** so you can remove any placeholder key.
 - **`:openai_responses` now uses `openai_model`.** It always sent `gpt-4` before.
+
+It also makes current Claude models work:
+
+- **Anthropic no longer receives the default `temperature`.** Only a value you set is
+  sent. If you set `config.temperature` and use current Claude models, remove it or clear
+  it per agent with `llm: { provider: :anthropic, temperature: nil }`.
+- **Anthropic tool loops now send real `tool_use` and `tool_result` blocks** and replay
+  thinking blocks unchanged. Before, tool results went as plain user text.
+- **The default models changed.** `:anthropic` now defaults to `claude-opus-5-5` and
+  `:google` to `gemini-3.8-flash`. If you rely on a default, check the cost and output, or
+  set a model explicitly. Claude prices in the built-in table were also corrected, so
+  reported costs may change.
+- **Delegation and answer revision no longer pass `temperature: 0.2`.** On other providers
+  they now use your configured temperature.

@@ -157,7 +157,6 @@ module RCrewAI
       # Use LLM to create proper delegation
       response = llm_client.chat(
         messages: [{ role: 'user', content: delegation_prompt }],
-        temperature: 0.2,
         max_tokens: 1000
       )
 
@@ -511,7 +510,6 @@ module RCrewAI
 
       response = llm_client.chat(
         messages: [{ role: 'user', content: revision_prompt }],
-        temperature: 0.2,
         max_tokens: 1000
       )
 
