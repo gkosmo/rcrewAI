@@ -8,6 +8,19 @@ description: Learn how to coordinate multiple AI crews for complex, multi-phase 
 
 This tutorial demonstrates how to work with multiple crews to handle complex, multi-phase operations that require different specialized teams working together. You'll learn crew coordination, inter-crew communication, resource sharing, and orchestration patterns.
 
+**What the gem provides.** RCrewAI gives you `Crew`, `Agent`, and `Task`, plus `crew.execute` and hooks such as `before_kickoff`. It has no built-in multi-crew layer, so the orchestrators, hubs, and managers on this page (`CrewPipeline`, `CrewCommunicationHub`, `SharedResourceManager`, and so on) are **example application code** that you own and can adapt. Each block also assumes the crews it mentions have been given agents and tasks.
+
+**Passing context between crews.** Crews share nothing by default. The examples use this small helper of your own, which appends information to each task's description with the gem's `Task#enrich_description`:
+
+```ruby
+# Application code: makes data available to every task in a crew.
+def share_context(crew, context)
+  crew.tasks.each { |task| task.enrich_description("Shared context:\n#{context}") }
+end
+```
+
+Call it once per run, because enrichment accumulates on the task. To pass a previous crew's output, use the task results it returned: `results[:results].map { |r| r[:result] }`.
+
 ## Table of Contents
 1. [Understanding Multi-Crew Architecture](#understanding-multi-crew-architecture)
 2. [Crew Coordination Patterns](#crew-coordination-patterns)
@@ -86,6 +99,21 @@ senior_developer = RCrewAI::Agent.new(
 
 dev_crew.add_agent(tech_lead)
 dev_crew.add_agent(senior_developer)
+
+# Every crew needs at least one task before it can run
+research_crew.add_task(RCrewAI::Task.new(
+  name: "market_analysis",
+  description: "Analyze the market for an AI-powered analytics dashboard",
+  agent: market_researcher,
+  expected_output: "Market analysis with key trends"
+))
+
+dev_crew.add_task(RCrewAI::Task.new(
+  name: "technical_plan",
+  description: "Write a technical plan for the dashboard",
+  agent: senior_developer,
+  expected_output: "Technical plan with milestones"
+))
 ```
 
 ## Crew Coordination Patterns
@@ -109,7 +137,8 @@ class CrewPipeline
       
       # Pass previous results as context
       if index > 0
-        crew.add_shared_context(@pipeline_results[index - 1])
+        previous_outputs = @pipeline_results[index - 1][:results].map { |r| r[:result] }
+        share_context(crew, previous_outputs.join("\n\n"))
       end
       
       # Execute crew
@@ -192,7 +221,7 @@ class ParallelCrewOrchestrator
             
             {
               crew_name: crew.name,
-              success: true,
+              success: result[:failed_tasks].zero?,  # failed tasks don't raise
               result: result,
               duration: duration,
               priority: crew_config[:priority]
@@ -346,7 +375,7 @@ class ECommerceOrchestrator
     
     # Pass research context to product crew
     research_context = extract_key_insights(research_results)
-    @product_crew.add_shared_context(research_context)
+    share_context(@product_crew, research_context)
     
     product_results = @product_crew.execute
     
@@ -363,7 +392,7 @@ class ECommerceOrchestrator
     
     # Pass product specs to tech crew  
     product_context = extract_technical_requirements(product_results)
-    @tech_crew.add_shared_context(product_context)
+    share_context(@tech_crew, product_context)
     
     tech_results = @tech_crew.execute
     
@@ -535,7 +564,7 @@ class ContentMarketingCampaign
     crew.add_agent(copywriter)
     
     # Add shared context
-    crew.add_shared_context(@shared_resources)
+    share_context(crew, @shared_resources)
     
     # Content tasks
     crew.add_task(RCrewAI::Task.new(
@@ -566,7 +595,7 @@ class ContentMarketingCampaign
     )
     
     crew.add_agent(seo_specialist)
-    crew.add_shared_context(@shared_resources)
+    share_context(crew, @shared_resources)
     
     crew.add_task(RCrewAI::Task.new(
       name: "keyword_research",
@@ -596,7 +625,7 @@ class ContentMarketingCampaign
     )
     
     crew.add_agent(social_manager)
-    crew.add_shared_context(@shared_resources)
+    share_context(crew, @shared_resources)
     
     crew.add_task(RCrewAI::Task.new(
       name: "social_content",
@@ -619,7 +648,7 @@ class ContentMarketingCampaign
     )
     
     crew.add_agent(email_specialist)
-    crew.add_shared_context(@shared_resources)
+    share_context(crew, @shared_resources)
     
     crew.add_task(RCrewAI::Task.new(
       name: "email_sequence",
@@ -642,7 +671,7 @@ class ContentMarketingCampaign
     )
     
     crew.add_agent(data_analyst)
-    crew.add_shared_context(@shared_resources)
+    share_context(crew, @shared_resources)
     
     crew.add_task(RCrewAI::Task.new(
       name: "tracking_setup",
@@ -667,7 +696,7 @@ class ContentMarketingCampaign
       
       {
         crew_type: crew_type,
-        success: true,
+        success: results[:failed_tasks].zero?,  # failed tasks don't raise
         results: results,
         duration: duration,
         crew_name: crew.name
@@ -730,7 +759,8 @@ class ContentMarketingCampaign
   end
 end
 
-# Thread pool executor for parallel crew execution
+# Application code: a small thread pool for parallel crew execution.
+# concurrent-ruby, already a dependency of the gem, is a sturdier option.
 class ThreadPoolExecutor
   def initialize(max_threads: 5)
     @max_threads = max_threads
@@ -760,25 +790,22 @@ end
 class Future
   def initialize(&block)
     @block = block
-    @executed = false
+    @done = Queue.new
     @result = nil
     @error = nil
   end
   
   def execute
-    return if @executed
-    
-    begin
-      @result = @block.call
-    rescue => e
-      @error = e
-    ensure
-      @executed = true
-    end
+    @result = @block.call
+  rescue => e
+    @error = e
+  ensure
+    @done.close
   end
   
+  # Blocks until the block has finished.
   def value
-    return @result if @executed && @error.nil?
+    @done.pop
     raise @error if @error
     @result
   end
@@ -886,11 +913,11 @@ class ResourceAwareCrew < RCrewAI::Crew
     shared_data = get_shared_resource("processed_data")
     
     if shared_config
-      add_shared_context(shared_config)
+      share_context(self, shared_config)
     end
     
     if shared_data
-      add_shared_context({ shared_data: shared_data })
+      share_context(self, { shared_data: shared_data })
     end
   end
   
@@ -913,12 +940,13 @@ end
 research_crew = ResourceAwareCrew.new("market_research")
 development_crew = ResourceAwareCrew.new("product_development")
 marketing_crew = ResourceAwareCrew.new("marketing_launch")
+# ...add agents and tasks to each crew, as in the earlier examples
 
 # Share global configuration
 $resource_manager.store_resource("global_config", {
   product_name: "AI Analytics Platform",
   target_market: "B2B SaaS",
-  launch_date: "2024-Q2",
+  launch_date: "next quarter",
   budget: "$500K"
 }, "orchestrator")
 
@@ -1158,7 +1186,7 @@ class CommunicatingCrew < RCrewAI::Crew
   
   def handle_data_sharing(message)
     puts "📊 Data shared from #{message[:from]}"
-    add_shared_context(message[:content])
+    share_context(self, message[:content])
   end
   
   def handle_coordination(message)
@@ -1177,6 +1205,7 @@ end
 frontend_crew = CommunicatingCrew.new("frontend_team")
 backend_crew = CommunicatingCrew.new("backend_team") 
 qa_crew = CommunicatingCrew.new("qa_team")
+# ...add agents and tasks to each crew, as in the earlier examples
 
 # Setup communication subscriptions
 frontend_crew.subscribe_to("backend_team", message_types: [:api_ready, :schema_update])
@@ -1236,15 +1265,16 @@ class MultiCrewOrchestrator
       crew_config = @crews[crew_name]
       crew = crew_config[:crew]
       
-      # Wait for dependencies
-      wait_for_dependencies(crew_name)
+      # Confirm dependencies succeeded
+      check_dependencies(crew_name)
       
       # Mark as running
       crew_config[:status] = :running
       
       begin
-        # Execute crew
+        # Execute crew. Failed tasks don't raise, so check for them here.
         result = crew.execute
+        raise "#{result[:failed_tasks]} task(s) failed" if result[:failed_tasks].positive?
         
         # Mark as completed
         crew_config[:status] = :completed
@@ -1300,7 +1330,7 @@ class MultiCrewOrchestrator
       
       temp_visited.delete(crew_name)
       visited.add(crew_name)
-      result.unshift(crew_name)
+      result << crew_name  # dependencies were added first
     end
     
     @crews.keys.each do |crew_name|
@@ -1310,19 +1340,15 @@ class MultiCrewOrchestrator
     result
   end
   
-  def wait_for_dependencies(crew_name)
+  def check_dependencies(crew_name)
     dependencies = @execution_graph[crew_name]
     return if dependencies.empty?
     
-    puts "⏳ Waiting for dependencies: #{dependencies.join(', ')}"
-    
+    # Crews run one at a time in dependency order, so every dependency has
+    # already finished by now. Stop if one of them didn't succeed.
     dependencies.each do |dep_name|
-      while @crews[dep_name][:status] != :completed
-        if @crews[dep_name][:status] == :failed
-          raise "Dependency #{dep_name} failed, cannot execute #{crew_name}"
-        end
-        
-        sleep(1)
+      unless @crews[dep_name][:status] == :completed
+        raise "Dependency #{dep_name} did not complete, cannot execute #{crew_name}"
       end
     end
     
@@ -1337,11 +1363,7 @@ class MultiCrewOrchestrator
       dependent_crew = @crews[dependent_name][:crew]
       
       # Share results as context
-      if dependent_crew.respond_to?(:add_shared_context)
-        dependent_crew.add_shared_context({
-          "#{crew_name}_results" => results
-        })
-      end
+      share_context(dependent_crew, "#{crew_name} results:\n#{results[:results].map { |r| r[:result] }.join("\n\n")}")
     end
   end
   
@@ -1416,6 +1438,7 @@ class MultiCrewOrchestrator
 end
 
 # Example: Complex Software Release Pipeline
+# (planning_crew, dev_crew, and the others are crews you've already built)
 orchestrator = MultiCrewOrchestrator.new
 
 # Add crews with dependencies
@@ -1517,12 +1540,9 @@ class ProductionMultiCrewSystem
       # Basic health check
       crew = crew_info[:crew]
       
-      health_status = if crew.respond_to?(:health_check)
-        crew.health_check
-      else
-        # Default health check
-        { status: :healthy, agents: crew.agents.length }
-      end
+      # Crews have no built-in health check, so this only reports their size.
+      # Replace it with whatever "healthy" means for your application.
+      health_status = { status: crew.agents.any? ? :healthy : :unhealthy, agents: crew.agents.length }
       
       crew_info[:health] = health_status[:status]
       crew_info[:last_health_check] = Time.now
@@ -1687,6 +1707,5 @@ Now that you understand multi-crew operations:
 1. Try the [Production Deployment]({{ site.baseurl }}/tutorials/deployment) tutorial
 2. Review the [API Documentation]({{ site.baseurl }}/api/) for detailed reference
 3. Check out [Advanced Examples]({{ site.baseurl }}/examples/) for complex scenarios
-4. Explore [Integration Patterns]({{ site.baseurl }}/guides/) for enterprise use
 
 Multi-crew systems are essential for building scalable AI operations that can handle complex, enterprise-level workflows with reliability and efficiency.

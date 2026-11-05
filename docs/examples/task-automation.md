@@ -232,7 +232,7 @@ results[:results].each_with_index do |task_result, index|
   if task_result[:status] == :completed
     puts "   Result: #{task_result[:result][0..100]}..."
   else
-    puts "   Error: #{task_result[:error]&.message}"
+    puts "   Error: #{task_result[:result]}"
   end
   puts
 end
@@ -428,7 +428,7 @@ data_processing_task ∥ email_task
 ```
 
 ### Hub-and-Spoke Pattern
-```ruby
+```text
 # Multiple inputs feed into central processing
 Task A ↘
 Task B → Central Task → Output

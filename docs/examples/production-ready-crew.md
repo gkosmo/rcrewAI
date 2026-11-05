@@ -29,6 +29,15 @@ require 'redis'
 
 # ===== PRODUCTION CONFIGURATION =====
 
+# Ruby's Logger takes one message, so structured fields are merged into it.
+class StructuredLogger < Logger
+  %i[debug info warn error].each do |level|
+    define_method(level) do |message = nil, fields = nil, &block|
+      super(fields ? "#{message} #{fields.to_json}" : message, &block)
+    end
+  end
+end
+
 class ProductionConfig
   def self.setup
     # Environment-based configuration
@@ -47,6 +56,8 @@ class ProductionConfig
         config.openai_api_key = ENV.fetch('OPENAI_API_KEY')
       when :anthropic
         config.anthropic_api_key = ENV.fetch('ANTHROPIC_API_KEY')
+        config.anthropic_model = 'claude-opus-5-5'
+        config.temperature = nil  # Current Claude models reject temperature, so don't send it
       when :azure
         config.azure_api_key = ENV.fetch('AZURE_OPENAI_API_KEY')
         config.base_url = ENV.fetch('AZURE_OPENAI_ENDPOINT')
@@ -65,7 +76,7 @@ class ProductionConfig
   private
   
   def self.setup_logger
-    logger = Logger.new($stdout)
+    logger = StructuredLogger.new($stdout)
     logger.level = ENV.fetch('LOG_LEVEL', 'INFO').upcase.constantize rescue Logger::INFO
     logger.formatter = proc do |severity, datetime, progname, msg|
       {
@@ -99,19 +110,19 @@ class ProductionAgent < RCrewAI::Agent
     @start_time = nil
   end
   
-  def execute_task(task)
+  def execute_task(task, **opts)
     @start_time = Time.now
     task_labels = { agent_name: name, task_name: task.name }
     
     begin
       @logger.info("Task execution started", task_labels)
       
-      result = super(task)
+      result = super
       
       duration = Time.now - @start_time
       @logger.info("Task execution completed", task_labels.merge(
         duration: duration,
-        result_length: result.length
+        result_length: result[:content].to_s.length
       ))
       
       result
@@ -151,7 +162,6 @@ support_manager = ProductionAgent.new(
     RCrewAI::Tools::FileWriter.new
   ],
   verbose: ProductionConfig.env == 'development',
-  max_execution_time: 600
 )
 
 # Technical Support Specialist
@@ -166,7 +176,6 @@ tech_support = ProductionAgent.new(
     RCrewAI::Tools::FileWriter.new
   ],
   verbose: ProductionConfig.env == 'development',
-  max_execution_time: 900
 )
 
 # Add agents to crew
@@ -181,8 +190,7 @@ issue_analysis = RCrewAI::Task.new(
   description: "Analyze incoming customer support tickets to categorize issues, assess severity, and determine initial response strategy.",
   expected_output: "Structured analysis with issue categorization, severity assessment, and recommended response strategy",
   async: true,
-  max_retries: 3,
-  retry_delay: 10
+  max_retries: 3
 )
 
 # Technical Issue Resolution  
@@ -407,8 +415,7 @@ health_status = HealthChecker.check_system_health
 Automatic retry with backoff:
 
 ```ruby
-max_retries: 3,
-retry_delay: 10  # Increases on retry
+max_retries: 3  # Waits 2, 4, then 8 seconds between attempts
 ```
 
 ### 4. **Execution Reports**

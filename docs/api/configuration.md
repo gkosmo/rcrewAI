@@ -12,11 +12,16 @@ The Configuration class manages settings for various LLM providers and global op
 
 RCrewAI supports the following LLM providers:
 
-- **OpenAI** (GPT-4, GPT-3.5-turbo, etc.)
-- **Anthropic** (Claude 3, Claude 2, etc.)
-- **Google** (Gemini Pro, PaLM, etc.)
-- **Azure OpenAI** (Azure-hosted OpenAI models)
-- **Ollama** (Local/self-hosted models)
+- **OpenAI** (`:openai`, and `:openai_responses` for the Responses API)
+- **Anthropic** (`:anthropic`)
+- **Google Gemini** (`:google`)
+- **Azure OpenAI** (`:azure`)
+- **Ollama** (`:ollama`, local models, no API key)
+- **OpenAI-compatible endpoints** (`:openai_compatible`)
+- **AWS Bedrock** (`:bedrock`)
+- **Snowflake Cortex** (`:snowflake`)
+
+See [LLM Providers]({{ site.baseurl }}/tutorials/providers) for setup examples.
 
 ## Basic Configuration
 
@@ -45,7 +50,7 @@ end
 RCrewAI.configure do |config|
   config.llm_provider = :openai
   config.openai_api_key = "your-openai-key"
-  config.openai_model = "gpt-4"
+  config.openai_model = "gpt-4o"
   config.temperature = 0.1
   config.max_tokens = 4000
 end
@@ -53,23 +58,19 @@ end
 
 ## Provider-Specific Configuration
 
+Model names change often, so check your provider's documentation for what's available.
+
 ### OpenAI
 
 ```ruby
 RCrewAI.configure do |config|
   config.llm_provider = :openai
   config.openai_api_key = ENV['OPENAI_API_KEY']
-  config.openai_model = 'gpt-4'  # or 'gpt-3.5-turbo', 'gpt-4-turbo'
+  config.openai_model = 'gpt-4o'
   config.temperature = 0.1
   config.max_tokens = 4000
 end
 ```
-
-**Available Models:**
-- `gpt-4`
-- `gpt-4-turbo`
-- `gpt-3.5-turbo`
-- `gpt-3.5-turbo-16k`
 
 ### Anthropic (Claude)
 
@@ -77,18 +78,11 @@ end
 RCrewAI.configure do |config|
   config.llm_provider = :anthropic
   config.anthropic_api_key = ENV['ANTHROPIC_API_KEY']
-  config.anthropic_model = 'claude-3-sonnet-20240229'
-  config.temperature = 0.1
+  config.anthropic_model = 'claude-opus-5-5'
+  config.temperature = nil # current Claude models reject temperature
   config.max_tokens = 4000
 end
 ```
-
-**Available Models:**
-- `claude-3-opus-20240229`
-- `claude-3-sonnet-20240229`
-- `claude-3-haiku-20240307`
-- `claude-2.1`
-- `claude-2.0`
 
 ### Google (Gemini)
 
@@ -96,16 +90,11 @@ end
 RCrewAI.configure do |config|
   config.llm_provider = :google
   config.google_api_key = ENV['GOOGLE_API_KEY']
-  config.google_model = 'gemini-pro'
+  config.google_model = 'gemini-2.5-flash'
   config.temperature = 0.1
   config.max_tokens = 4000
 end
 ```
-
-**Available Models:**
-- `gemini-pro`
-- `gemini-pro-vision`
-- `text-bison-001`
 
 ### Azure OpenAI
 
@@ -114,7 +103,7 @@ RCrewAI.configure do |config|
   config.llm_provider = :azure
   config.azure_api_key = ENV['AZURE_OPENAI_API_KEY']
   config.base_url = "https://your-resource.openai.azure.com/"
-  config.api_version = "2023-05-15"
+  config.api_version = "2024-10-21"
   config.deployment_name = "your-deployment-name"
   config.azure_model = 'gpt-4'
 end
@@ -173,6 +162,12 @@ RCrewAI.reset_configuration!
 | `temperature` | Float | `0.1` | Sampling temperature (0.0 - 2.0) |
 | `max_tokens` | Integer | `4000` | Maximum tokens in response |
 | `timeout` | Integer | `120` | Request timeout in seconds |
+| `base_url` | String | none | Endpoint for `:azure`, `:openai_compatible`, `:ollama` and `:anthropic` gateways (`LLM_BASE_URL`) |
+| `aws_region` | String | none | Region for `:bedrock` (`AWS_REGION`, `AWS_DEFAULT_REGION`) |
+| `snowflake_account` | String | none | Account for `:snowflake` (`SNOWFLAKE_ACCOUNT`) |
+| `pricing` | Hash | none | Per-model price overrides |
+| `ollama_native_tools` | Boolean | none | Override native tool detection for Ollama models |
+| `log_level` | Symbol | `:info` | Log level |
 
 ### Provider-Specific Keys
 
@@ -182,6 +177,7 @@ RCrewAI.reset_configuration!
 | `anthropic_api_key` | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `google_api_key` | `GOOGLE_API_KEY` | Google API key |
 | `azure_api_key` | `AZURE_OPENAI_API_KEY` | Azure OpenAI API key |
+| `api_key` | `LLM_API_KEY` | Fallback key, and the key for `:openai_compatible`, `:bedrock` and `:snowflake` |
 
 ### Provider-Specific Models
 
@@ -191,6 +187,9 @@ RCrewAI.reset_configuration!
 | `anthropic_model` | `claude-3-sonnet-20240229` | Anthropic model name |
 | `google_model` | `gemini-pro` | Google model name |
 | `azure_model` | `gpt-4` | Azure OpenAI model name |
+| `model` | none | Used when the provider-specific option isn't set, and required for `:ollama`, `:openai_compatible`, `:bedrock` and `:snowflake` |
+
+These defaults are old, and the Anthropic and Google ones may no longer be served, so set a model explicitly. A model resolves as the provider-specific option, then `model`, then the default.
 
 ### Azure-Specific Settings
 
@@ -236,7 +235,7 @@ export GOOGLE_API_KEY="AIza..."
 export AZURE_OPENAI_API_KEY="..."
 
 # Azure Specific
-export AZURE_API_VERSION="2023-05-15"
+export AZURE_API_VERSION="2024-10-21"
 export AZURE_DEPLOYMENT_NAME="gpt-4-deployment"
 export LLM_BASE_URL="https://your-resource.openai.azure.com/"
 
@@ -251,7 +250,7 @@ RCrewAI validates configuration when `configure` is called:
 ```ruby
 begin
   RCrewAI.configure do |config|
-    config.llm_provider = :invalid_provider
+    config.llm_provider = nil
   end
 rescue RCrewAI::ConfigurationError => e
   puts "Configuration error: #{e.message}"
@@ -283,12 +282,9 @@ RCrewAI.reset_configuration!
 
 1. **Use Environment Variables**: Store API keys in environment variables, not in code
 2. **Provider Selection**: Choose providers based on task requirements:
-   - OpenAI GPT-4: General-purpose, high quality
-   - Claude: Great for analysis and reasoning
-   - Gemini: Good for creative tasks
-   - Azure: Enterprise requirements
+   - Azure, Bedrock, Snowflake: Your organization already uses that platform
    - Ollama: Privacy-sensitive or offline use
-3. **Temperature Settings**: 
+3. **Temperature Settings** (not accepted by current Claude models; set `nil` for those):
    - Low (0.1-0.3): Factual, consistent outputs
    - Medium (0.5-0.7): Balanced creativity and consistency  
    - High (0.8-1.0): Creative, varied outputs
@@ -312,7 +308,7 @@ end
 ```ruby
 # Check supported providers
 puts RCrewAI.configuration.supported_providers
-# => [:openai, :anthropic, :google, :azure, :ollama]
+# => [:openai, :anthropic, :google, :azure, :ollama, :openai_compatible, :bedrock, :snowflake, :openai_responses]
 ```
 
 **Azure Configuration Issues**
@@ -321,7 +317,7 @@ RCrewAI.configure do |config|
   config.llm_provider = :azure
   config.azure_api_key = ENV['AZURE_OPENAI_API_KEY']
   config.base_url = "https://your-resource.openai.azure.com/"  # Include trailing slash
-  config.api_version = "2023-05-15"  # Use supported API version
+  config.api_version = "2024-10-21"  # Use supported API version
   config.deployment_name = "your-deployment-name"  # Exact deployment name
 end
 ```

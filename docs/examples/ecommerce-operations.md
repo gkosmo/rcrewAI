@@ -36,7 +36,7 @@ end
 # Product Catalog Management Tool
 class ProductCatalogTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'product_catalog_manager'
     @description = 'Manage product listings, descriptions, and catalog optimization'
     @product_database = {}
@@ -129,7 +129,7 @@ end
 # Inventory Management Tool
 class InventoryManagementTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'inventory_manager'
     @description = 'Manage inventory levels, demand forecasting, and supplier relationships'
     @inventory_data = {}
@@ -216,7 +216,7 @@ end
 # Pricing Strategy Tool
 class PricingStrategyTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'pricing_strategist'
     @description = 'Optimize pricing strategies and competitive positioning'
   end
@@ -576,7 +576,7 @@ results[:results].each do |ops_result|
   if ops_result[:status] == :completed
     puts "   Optimization: Successfully completed"
   else
-    puts "   Issue: #{ops_result[:error]&.message}"
+    puts "   Issue: #{ops_result[:result]}"
   end
   puts
 end

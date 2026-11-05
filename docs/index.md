@@ -44,6 +44,16 @@ RCrewAI has expanded well beyond the classic crew model. Recent releases added:
 See the [CHANGELOG](https://github.com/gkosmo/rcrewAI/blob/main/CHANGELOG.md) and the
 per-release upgrade guides (e.g. [upgrading to 0.7](https://github.com/gkosmo/rcrewAI/blob/main/docs/upgrading-to-0.7.md)) for details.
 
+## What's new (0.8 – 0.10)
+
+- **[Providers]({{ site.baseurl }}/tutorials/providers)**: AWS Bedrock, Snowflake Cortex, OpenAI-compatible endpoints and the Responses API
+- **[Checkpointing]({{ site.baseurl }}/tutorials/checkpointing)**: resume a failed run without repeating finished tasks
+- **[Interceptors and events]({{ site.baseurl }}/tutorials/interceptors-and-events)**: hook into LLM calls and rebuild a run into a trace
+- **[Concurrency]({{ site.baseurl }}/tutorials/concurrency)**: parallel tool calls, consensus rounds and embeddings, each with a limit
+- **[Live streaming]({{ site.baseurl }}/tutorials/live-streaming)**: cancellable Anthropic streams with connection reuse
+
+Upgrading? See [what to check]({{ site.baseurl }}/upgrading-to-0.10).
+
 ## Quick Start
 
 ### Basic Agent Collaboration
@@ -185,50 +195,31 @@ $ gem install rcrewai
 
 ## CLI Usage
 
-RCrewAI includes a powerful CLI for managing your AI crews:
-
 ```bash
-# Create a new crew with different process types
-$ rcrewai new my_research_crew --process sequential
-$ rcrewai new enterprise_team --process hierarchical
-
-# List available crews and agents
+# Create and list crews
+$ rcrewai new my_research_crew
 $ rcrewai list
-$ rcrewai agents list
 
-# Create agents with advanced capabilities
+# Create agents and tasks
 $ rcrewai agent new researcher \
   --role "Senior Research Analyst" \
-  --goal "Find cutting-edge AI information" \
-  --backstory "Expert researcher with 10 years experience" \
-  --tools web_search,file_writer \
-  --verbose \
-  --human-input
+  --goal "Find reliable sources"
 
-# Create manager agents for hierarchical crews
-$ rcrewai agent new project_manager \
-  --role "Project Coordinator" \
-  --goal "Coordinate team execution" \
-  --manager \
-  --allow-delegation
-
-# Create tasks with dependencies and human interaction
 $ rcrewai task new research \
   --description "Research latest AI developments" \
-  --expected-output "Comprehensive AI research report" \
   --agent researcher \
-  --async \
-  --human-input \
-  --require-confirmation
+  --async
 
-# Run crews with different execution modes
+# Run a crew
 $ rcrewai run --crew my_research_crew
-$ rcrewai run --crew enterprise_team --async --max-concurrency 4
 
-# Check crew status and results
-$ rcrewai status --crew my_research_crew
-$ rcrewai results --crew my_research_crew --task research
+# Inspect saved checkpoints
+$ rcrewai checkpoint list
+$ rcrewai checkpoint info RUN_ID
+$ rcrewai checkpoint delete RUN_ID
 ```
+
+`checkpoint` and `version` are fully working. The `new`, `list`, `run`, `agent` and `task` commands are placeholders: they don't save anything, the lists are sample names, and `run` executes an empty crew. For now, define crews in Ruby.
 
 ## Key Capabilities
 
@@ -287,43 +278,70 @@ Built for enterprise deployment and reliability:
 RCrewAI works with all major LLM providers through a unified interface:
 
 ```ruby
-# OpenAI (GPT-4, GPT-3.5, etc.)
+# OpenAI
 RCrewAI.configure do |config|
   config.llm_provider = :openai
   config.openai_api_key = ENV['OPENAI_API_KEY']
-  config.model = 'gpt-4'
-  config.temperature = 0.1
+  config.openai_model = 'gpt-4o'
 end
 
-# Anthropic Claude
+# Anthropic
 RCrewAI.configure do |config|
   config.llm_provider = :anthropic
-  config.anthropic_api_key = ENV['ANTHROPIC_API_KEY'] 
-  config.model = 'claude-3-sonnet-20240229'
+  config.anthropic_api_key = ENV['ANTHROPIC_API_KEY']
+  config.anthropic_model = 'claude-opus-5-5'
+  config.temperature = nil # current Claude models reject temperature
 end
 
 # Google Gemini
 RCrewAI.configure do |config|
   config.llm_provider = :google
   config.google_api_key = ENV['GOOGLE_API_KEY']
-  config.model = 'gemini-pro'
+  config.google_model = 'gemini-2.5-flash'
 end
 
 # Azure OpenAI
 RCrewAI.configure do |config|
   config.llm_provider = :azure
   config.azure_api_key = ENV['AZURE_OPENAI_API_KEY']
-  config.azure_endpoint = ENV['AZURE_OPENAI_ENDPOINT']
-  config.model = 'gpt-4'
+  config.base_url = ENV['AZURE_OPENAI_ENDPOINT']
+  config.deployment_name = 'your-deployment'
+  config.api_version = '2024-10-21'
 end
 
-# Local Ollama
+# Local Ollama (no API key)
 RCrewAI.configure do |config|
   config.llm_provider = :ollama
-  config.ollama_url = 'http://localhost:11434'
-  config.model = 'llama2'
+  config.base_url = 'http://localhost:11434'
+  config.model = 'llama3.1'
+end
+
+# Any OpenAI-compatible endpoint: Together, Groq, Fireworks, vLLM, LiteLLM, OpenRouter
+RCrewAI.configure do |config|
+  config.llm_provider = :openai_compatible
+  config.base_url = 'https://api.groq.com/openai/v1'
+  config.api_key = ENV['GROQ_API_KEY']
+  config.model = 'your-model'
+end
+
+# AWS Bedrock (bearer token; SigV4 signing isn't built in)
+RCrewAI.configure do |config|
+  config.llm_provider = :bedrock
+  config.aws_region = 'us-east-1'
+  config.api_key = ENV['BEDROCK_API_KEY']
+  config.model = 'your-bedrock-model-id'
+end
+
+# Snowflake Cortex
+RCrewAI.configure do |config|
+  config.llm_provider = :snowflake
+  config.snowflake_account = 'your-account'
+  config.api_key = ENV['SNOWFLAKE_TOKEN']
+  config.model = 'your-cortex-model'
 end
 ```
+
+There's also `:openai_responses`, which uses OpenAI's Responses API (no streaming) with your OpenAI model and key settings.
 
 ## Use Cases
 

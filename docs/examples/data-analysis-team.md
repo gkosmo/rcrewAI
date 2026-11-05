@@ -19,7 +19,7 @@ Our data analysis team consists of:
 
 ## Complete Implementation
 
-```ruby
+````ruby
 require 'rcrewai'
 require 'json'
 require 'csv'
@@ -284,7 +284,7 @@ results[:results].each do |analysis_result|
     word_count = analysis_result[:result].split.length
     puts "   Analysis: #{word_count} words of detailed insights"
   else
-    puts "   Error: #{analysis_result[:error]&.message}"
+    puts "   Error: #{analysis_result[:result]}"
   end
   puts
 end
@@ -586,7 +586,7 @@ puts "   • Expand referral acquisition programs"
 puts "   • Present findings to executive team"
 puts ""
 puts "📈 **Projected ROI:** $2.1M annual impact from $450K investment (467% ROI)"
-```
+````
 
 ## Advanced Data Analysis Features
 
@@ -628,7 +628,7 @@ Complete analysis package includes:
 ### 4. **Decision-Ready Outputs**
 All analysis is structured for immediate action:
 
-```ruby
+```text
 # Each recommendation includes:
 - Specific action items
 - Timeline and priorities  

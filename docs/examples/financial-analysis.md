@@ -36,7 +36,7 @@ end
 # Financial Data Parser Tool
 class FinancialDataTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'financial_data_parser'
     @description = 'Parse and analyze financial data from various sources'
   end
@@ -122,7 +122,7 @@ end
 # Risk Calculation Tool
 class RiskCalculationTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'risk_calculator'
     @description = 'Calculate various financial risk metrics'
   end
@@ -493,7 +493,7 @@ results[:results].each do |analysis_result|
   if analysis_result[:status] == :completed
     puts "   Analysis: Successfully completed"
   else
-    puts "   Error: #{analysis_result[:error]&.message}"
+    puts "   Error: #{analysis_result[:result]}"
   end
   puts
 end

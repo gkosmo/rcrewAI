@@ -5,7 +5,7 @@ This roadmap tracks feature parity between **RCrewAI** (Ruby) and the upstream
 
 ## Current status
 
-- **RCrewAI:** `0.8.1` released; 1.0.0 concurrency work merged to `main`, unreleased
+- **RCrewAI:** `0.10.0` released
 - **Upstream crewai:** `1.15.21`
 
 RCrewAI is a faithful port of CrewAI's **"Crews"** mental model (Agents / Tasks /

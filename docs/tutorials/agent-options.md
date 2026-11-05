@@ -17,11 +17,13 @@ Give each agent its own provider/model instead of only the global default:
 worker  = RCrewAI::Agent.new(name: 'worker', role: '...', goal: '...',
                              llm: { provider: :openai, model: 'gpt-4o-mini' })
 manager = RCrewAI::Agent.new(name: 'manager', role: '...', goal: '...',
-                             llm: { provider: :anthropic, model: 'claude-3-opus-20240229' })
+                             llm: { provider: :anthropic, model: 'claude-opus-5-5' })
 ```
 
 Accepts a provider symbol, an options hash, or a pre-built client. Overrides
-never mutate the global configuration.
+never mutate the global configuration. Current Claude models reject `temperature`,
+so this example needs `config.temperature = nil` set globally; see
+[LLM Providers]({{ site.baseurl }}/tutorials/providers).
 
 ## Reasoning
 

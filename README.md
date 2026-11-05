@@ -11,7 +11,7 @@ RCrewAI is a Ruby implementation of the CrewAI framework, allowing you to create
 ## 🚀 Features
 
 - **🤖 Intelligent Agents**: AI agents with reasoning loops, memory, and tool usage capabilities
-- **🔗 Multi-LLM Support**: OpenAI, Anthropic (Claude), Google (Gemini), Azure OpenAI, and Ollama
+- **🔗 Multi-LLM Support**: OpenAI (Chat Completions and Responses), Anthropic (Claude), Google (Gemini), Azure OpenAI, Ollama, AWS Bedrock, Snowflake Cortex, and any OpenAI-compatible endpoint
 - **🛠️ Rich Tool Ecosystem**: Web search, file operations, SQL, email, code execution, PDF processing, and custom tools
 - **🧠 Cognitive Memory**: Semantic recall (embeddings + cosine) with optional SQLite persistence and short-term/long-term/entity/tool memory types
 - **🤝 Human-in-the-Loop**: Interactive approval workflows, human guidance, and collaborative decision making
@@ -21,6 +21,10 @@ RCrewAI is a Ruby implementation of the CrewAI framework, allowing you to create
 - **🎯 Flexible Orchestration**: Sequential, hierarchical, and concurrent execution modes
 - **🌊 Flows**: Event-driven workflows with `start`/`listen`/`router`, branching, and persistent state
 - **📚 Knowledge (RAG)**: Ground agents in your own documents with built-in retrieval
+- **💾 Checkpointing**: Resume a failed run without repeating finished tasks
+- **🔍 Observability**: LLM request and response hooks, plus a nested event stream
+- **🚦 Bounded Concurrency**: Parallel tool calls, consensus rounds and embeddings, each with a limit
+- **🎙️ Live Streaming**: Cancellable Anthropic streams with connection reuse
 - **💎 Ruby-First Design**: Built specifically for Ruby developers with idiomatic patterns
 
 ## 📦 Installation
@@ -134,44 +138,74 @@ puts "✅ Crew completed #{results[:completed_tasks]}/#{results[:total_tasks]} t
 ## 🔧 LLM Provider Support
 
 ```ruby
-# OpenAI (GPT-4, GPT-3.5, etc.)
+# OpenAI
 RCrewAI.configure do |config|
   config.llm_provider = :openai
   config.openai_api_key = ENV['OPENAI_API_KEY']
-  config.model = 'gpt-4'
+  config.openai_model = 'gpt-4o'
 end
 
-# Anthropic Claude
+# Anthropic
 RCrewAI.configure do |config|
   config.llm_provider = :anthropic
-  config.anthropic_api_key = ENV['ANTHROPIC_API_KEY'] 
-  config.model = 'claude-3-sonnet-20240229'
+  config.anthropic_api_key = ENV['ANTHROPIC_API_KEY']
+  config.anthropic_model = 'claude-opus-5-5'
+  config.temperature = nil # current Claude models reject temperature
 end
 
 # Google Gemini
 RCrewAI.configure do |config|
   config.llm_provider = :google
   config.google_api_key = ENV['GOOGLE_API_KEY']
-  config.model = 'gemini-pro'
+  config.google_model = 'gemini-2.5-flash'
 end
 
 # Azure OpenAI
 RCrewAI.configure do |config|
   config.llm_provider = :azure
   config.azure_api_key = ENV['AZURE_OPENAI_API_KEY']
-  config.azure_endpoint = ENV['AZURE_OPENAI_ENDPOINT']
-  config.model = 'gpt-4'
+  config.base_url = ENV['AZURE_OPENAI_ENDPOINT']
+  config.deployment_name = 'your-deployment'
+  config.api_version = '2024-10-21'
 end
 
-# Local Ollama
+# Local Ollama (no API key)
 RCrewAI.configure do |config|
   config.llm_provider = :ollama
-  config.ollama_url = 'http://localhost:11434'
-  config.model = 'llama2'
+  config.base_url = 'http://localhost:11434'
+  config.model = 'llama3.1'
+end
+
+# Any OpenAI-compatible endpoint: Together, Groq, Fireworks, vLLM, LiteLLM, OpenRouter
+RCrewAI.configure do |config|
+  config.llm_provider = :openai_compatible
+  config.base_url = 'https://api.groq.com/openai/v1'
+  config.api_key = ENV['GROQ_API_KEY']
+  config.model = 'your-model'
+end
+
+# AWS Bedrock (bearer token; SigV4 signing isn't built in)
+RCrewAI.configure do |config|
+  config.llm_provider = :bedrock
+  config.aws_region = 'us-east-1'
+  config.api_key = ENV['BEDROCK_API_KEY']
+  config.model = 'your-bedrock-model-id'
+end
+
+# Snowflake Cortex
+RCrewAI.configure do |config|
+  config.llm_provider = :snowflake
+  config.snowflake_account = 'your-account'
+  config.api_key = ENV['SNOWFLAKE_TOKEN']
+  config.model = 'your-cortex-model'
 end
 ```
 
+There's also `:openai_responses`, which uses OpenAI's Responses API (no streaming) with your OpenAI model and key settings.
+
 ### Per-agent LLM
+
+Agents using current Claude models need `config.temperature = nil` set globally, because those models reject `temperature` and overrides inherit it.
 
 The `RCrewAI.configure` block sets the crew-wide default. Any agent can override
 it with the `llm:` option, so a single crew can mix providers and models — for
@@ -184,7 +218,7 @@ researcher = RCrewAI::Agent.new(name: 'researcher', role: '...', goal: '...',
 
 # Provider + model (and optionally api_key / temperature)
 manager = RCrewAI::Agent.new(name: 'manager', role: '...', goal: '...',
-                             llm: { provider: :anthropic, model: 'claude-3-opus-20240229' })
+                             llm: { provider: :anthropic, model: 'claude-opus-5-5' })
 
 worker = RCrewAI::Agent.new(name: 'worker', role: '...', goal: '...',
                             llm: { provider: :openai, model: 'gpt-4o-mini' })
@@ -240,7 +274,7 @@ the executing agent a head start:
 crew = RCrewAI::Crew.new('research_crew', planning: true)
 # Optionally use a dedicated (e.g. stronger) planner model:
 crew = RCrewAI::Crew.new('research_crew', planning: true,
-                         planning_llm: { provider: :anthropic, model: 'claude-3-opus-20240229' })
+                         planning_llm: { provider: :anthropic, model: 'claude-opus-5-5' })
 ```
 
 Planning is best-effort: if the planner errors or returns unparseable output,
@@ -465,6 +499,73 @@ becomes the result (ties break toward the task's assigned agent). A proposer tha
 errors is dropped; if all proposals fail the task is marked failed. Consensus
 multiplies LLM calls, so `consensus_agents` bounds the cost on larger crews.
 
+## 💾 Checkpointing
+
+Save progress after each task, then resume a failed run without paying for finished work again:
+
+```ruby
+store = RCrewAI::Checkpoint::FileStore.new('.rcrewai/checkpoints')
+
+crew.execute(checkpoint: store)
+run_id = crew.run_id
+
+# Later, on a crew with the same task names:
+crew.resume(run_id, checkpoint: store)
+RCrewAI::Checkpoint.lineage(store, crew.run_id) # => [original_id, resumed_id]
+```
+
+See the [checkpointing tutorial](docs/tutorials/checkpointing.md).
+
+## 🔍 Interceptors & Events
+
+Hook into every LLM call, or subscribe to what the crew is doing:
+
+```ruby
+client = RCrewAI::LLMClient.for_provider(:openai, RCrewAI.configuration,
+                                         before_request: ->(payload, _ctx) { payload.merge(user: 'anonymous') })
+client.after_response { |_result, ctx| puts "#{ctx[:model]}: #{ctx[:duration_ms]}ms"; nil }
+
+agent = RCrewAI::Agent.new(name: 'analyst', role: 'Analyst', goal: 'Analyze', llm: client)
+
+crew.execute do |event|
+  print event.text if event.is_a?(RCrewAI::Events::TextDelta)
+end
+```
+
+Events carry `id` and `parent_id`, so you can rebuild a run into a trace. See [interceptors and events](docs/tutorials/interceptors-and-events.md).
+
+## 🚦 Concurrency
+
+Tool calls in one turn, consensus rounds, and embeddings on `:google` and `:ollama` run concurrently, each limited to 8 at a time by default.
+
+```ruby
+# For an agent whose tools aren't thread-safe, or that calls a rate-limited API:
+RCrewAI::Agent.new(name: 'clerk', role: 'Clerk', goal: 'Update records', parallel_tools: false)
+
+RCrewAI::Crew.new('panel', process: :consensual, consensus_max_concurrency: 4)
+RCrewAI::Knowledge::Embedder.new(provider: :ollama, max_concurrency: 2)
+```
+
+See the [concurrency tutorial](docs/tutorials/concurrency.md).
+
+## 🎙️ Live Streaming
+
+For real-time callers such as voice agents, the Anthropic client can cancel a stream mid-reply. It also reuses its connection between turns:
+
+```ruby
+client = RCrewAI::LLMClient.for_provider(:anthropic)
+token = RCrewAI::CancelToken.new
+
+begin
+  client.chat(messages: messages, model: 'claude-haiku-5-5', cancel: token,
+              stream: ->(event) { print event.text if event.is_a?(RCrewAI::Events::TextDelta) })
+rescue RCrewAI::StreamCancelled
+  puts '(interrupted)'
+end
+```
+
+See the [live streaming tutorial](docs/tutorials/live-streaming.md).
+
 ## 💡 Examples
 
 ### Hierarchical Team with Human Oversight
@@ -530,24 +631,30 @@ results = crew.execute(
 ## 🛠️ CLI Usage
 
 ```bash
-# Create a new crew
-$ rcrewai new my_research_crew --process sequential
+# Create and list crews
+$ rcrewai new my_research_crew
+$ rcrewai list
 
-# Create agents with tools
+# Create agents and tasks
 $ rcrewai agent new researcher \
   --role "Senior Research Analyst" \
-  --tools web_search,file_writer \
-  --human-input
+  --goal "Find reliable sources"
 
-# Create tasks with dependencies  
 $ rcrewai task new research \
   --description "Research latest AI developments" \
   --agent researcher \
   --async
 
-# Run crews
-$ rcrewai run --crew my_research_crew --async
+# Run a crew
+$ rcrewai run --crew my_research_crew
+
+# Inspect saved checkpoints
+$ rcrewai checkpoint list
+$ rcrewai checkpoint info RUN_ID
+$ rcrewai checkpoint delete RUN_ID
 ```
+
+`checkpoint` and `version` are fully working. The `new`, `list`, `run`, `agent` and `task` commands are placeholders: they don't save anything, the lists are sample names, and `run` executes an empty crew. For now, define crews in Ruby.
 
 ## 📚 Examples & Documentation
 
@@ -555,6 +662,8 @@ $ rcrewai run --crew my_research_crew --async
 - **[Human-in-the-Loop Example](examples/human_in_the_loop_example.rb)**: Interactive AI workflows
 - **[Hierarchical Teams](examples/hierarchical_crew_example.rb)**: Manager coordination
 - **[Async Execution](examples/async_execution_example.rb)**: Performance optimization
+- **[LLM Providers](docs/tutorials/providers.md)**: Setup for all nine providers
+- **[Upgrading to 0.10](docs/upgrading-to-0.10.md)**: What to check when upgrading
 - **[API Documentation](docs/api/)**: Complete API reference
 
 ## 🎯 Use Cases
@@ -616,10 +725,14 @@ gem 'rcrewai-rails'
 Rails.application.routes.draw do
   mount RcrewAI::Rails::Engine, at: '/rcrewai'
 end
+```
 
+```bash
 # Generate a new crew
-rails generate rcrew_ai:crew marketing_crew
+$ rails generate rcrewai:rails:crew marketing_crew
+```
 
+```ruby
 # Create persistent agents and tasks through Rails models
 crew = RcrewAI::Rails::Crew.create!(name: "Content Team", description: "AI content generation")
 agent = crew.agents.create!(name: "writer", role: "Content Writer", goal: "Create engaging content")

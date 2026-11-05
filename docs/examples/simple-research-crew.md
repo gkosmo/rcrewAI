@@ -24,7 +24,7 @@ require 'rcrewai'
 RCrewAI.configure do |config|
   config.llm_provider = :openai  # or :anthropic, :google, :azure
   # API keys are loaded automatically from environment variables
-  config.openai_model = 'gpt-4'  # or 'gpt-3.5-turbo' for lower cost
+  config.openai_model = 'gpt-4o'
   config.temperature = 0.1       # Lower = more consistent, Higher = more creative
 end
 
@@ -108,7 +108,7 @@ require 'rcrewai'
 RCrewAI.configure do |config|
   config.llm_provider = :openai
   config.api_key = ENV['OPENAI_API_KEY']
-  config.model = 'gpt-4'
+  config.model = 'gpt-4o'
 end
 ```
 

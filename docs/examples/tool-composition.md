@@ -35,9 +35,14 @@ end
 # Base tool for common functionality
 class CompositeToolBase < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @context_store = {}
     @tool_chain = []
+  end
+
+  # Agents invoke tools through #execute; these tools implement #call.
+  def execute(**params)
+    call(**params)
   end
 
   protected
@@ -810,6 +815,7 @@ end
 
 # Agent Definitions
 marketing_strategist = RCrewAI::Agent.new(
+  name: "marketing_strategist",
   role: "Marketing Strategy Director",
   goal: "Develop comprehensive marketing strategies using data-driven insights from composed tool workflows",
   backstory: "You are an expert marketing strategist who excels at orchestrating multiple marketing tools to create powerful, data-driven campaigns. You understand how to leverage web analytics, social media data, content creation, and performance tracking tools in harmony to achieve maximum impact.",
@@ -818,6 +824,7 @@ marketing_strategist = RCrewAI::Agent.new(
 )
 
 content_specialist = RCrewAI::Agent.new(
+  name: "content_specialist",
   role: "Content & SEO Specialist",
   goal: "Create and optimize high-performing content by combining content generation with SEO optimization tools",
   backstory: "You are a content creation expert who understands how to combine creative content generation with technical SEO optimization. You excel at using multiple tools together to create content that both engages audiences and ranks well in search engines.",
@@ -826,6 +833,7 @@ content_specialist = RCrewAI::Agent.new(
 )
 
 distribution_manager = RCrewAI::Agent.new(
+  name: "distribution_manager",
   role: "Multi-Channel Distribution Manager",
   goal: "Orchestrate content distribution across social media and email channels for maximum reach and engagement",
   backstory: "You specialize in multi-channel content distribution, expertly combining social media publishing tools with email marketing systems. You understand how to adapt content for different platforms while maintaining consistent messaging.",
@@ -834,6 +842,7 @@ distribution_manager = RCrewAI::Agent.new(
 )
 
 performance_analyst = RCrewAI::Agent.new(
+  name: "performance_analyst",
   role: "Marketing Performance Analyst",
   goal: "Analyze campaign performance by combining data from all marketing channels and tools",
   backstory: "You are a data analyst who excels at combining insights from web analytics, social media metrics, and campaign tracking tools. You provide actionable insights by correlating data across multiple tool outputs.",
@@ -842,6 +851,7 @@ performance_analyst = RCrewAI::Agent.new(
 )
 
 automation_architect = RCrewAI::Agent.new(
+  name: "automation_architect",
   role: "Marketing Automation Architect",
   goal: "Design and implement automated marketing workflows using tool composition patterns",
   backstory: "You are an automation expert who designs sophisticated marketing workflows by composing multiple tools together. You understand how to create efficient, scalable automation systems that leverage the strengths of different marketing tools.",
@@ -850,6 +860,7 @@ automation_architect = RCrewAI::Agent.new(
 )
 
 campaign_coordinator = RCrewAI::Agent.new(
+  name: "campaign_coordinator",
   role: "Campaign Coordination Specialist",
   goal: "Coordinate complex marketing campaigns by ensuring seamless tool integration and workflow execution",
   backstory: "You excel at coordinating complex marketing campaigns that require multiple tools working in harmony. You ensure that data flows properly between tools and that each tool's output enhances the effectiveness of subsequent tools in the workflow.",
@@ -859,6 +870,7 @@ campaign_coordinator = RCrewAI::Agent.new(
 
 # Task Definitions
 strategy_development_task = RCrewAI::Task.new(
+  name: "strategy_development",
   description: "Develop a comprehensive marketing strategy for a SaaS product targeting small businesses. Use tool composition to:
   1. Analyze current market performance using web and social analytics
   2. Generate content strategies based on analytics insights  
@@ -872,6 +884,7 @@ strategy_development_task = RCrewAI::Task.new(
 )
 
 content_creation_workflow_task = RCrewAI::Task.new(
+  name: "content_creation_workflow",
   description: "Execute a content creation workflow that demonstrates advanced tool composition:
   1. Generate blog post content for 'small business automation' topic
   2. Optimize the content for SEO using target keywords: ['business automation', 'small business efficiency', 'workflow optimization']
@@ -884,6 +897,7 @@ content_creation_workflow_task = RCrewAI::Task.new(
 )
 
 multi_channel_distribution_task = RCrewAI::Task.new(
+  name: "multi_channel_distribution",
   description: "Execute a multi-channel distribution campaign using composed tools:
   1. Take the optimized content from the content creation workflow
   2. Adapt it for different social media platforms (Twitter, LinkedIn, Facebook)
@@ -894,10 +908,11 @@ multi_channel_distribution_task = RCrewAI::Task.new(
   Demonstrate how tool composition enables sophisticated multi-channel campaigns.",
   expected_output: "A comprehensive distribution report showing content adaptations for each platform, publishing schedule, estimated reach calculations, and examples of how tool composition enabled better cross-platform coordination.",
   agent: distribution_manager,
-  dependencies: [content_creation_workflow_task]
+  context: [content_creation_workflow_task]
 )
 
 performance_analysis_task = RCrewAI::Task.new(
+  name: "performance_analysis",
   description: "Conduct comprehensive performance analysis using composed analytics tools:
   1. Analyze web analytics data to understand user behavior
   2. Evaluate social media performance across platforms
@@ -908,10 +923,11 @@ performance_analysis_task = RCrewAI::Task.new(
   Show how combining multiple analytics tools provides deeper insights than individual tools alone.",
   expected_output: "A detailed performance analysis report that demonstrates how tool composition enables comprehensive cross-channel analytics, including correlation analysis, performance attribution, and optimization recommendations based on combined data sources.",
   agent: performance_analyst,
-  dependencies: [multi_channel_distribution_task]
+  context: [multi_channel_distribution_task]
 )
 
 automation_workflow_design_task = RCrewAI::Task.new(
+  name: "automation_workflow_design",
   description: "Design an automated marketing workflow that showcases advanced tool composition:
   1. Create a workflow that automatically triggers based on performance thresholds
   2. Include decision points that route to different tool combinations
@@ -922,10 +938,11 @@ automation_workflow_design_task = RCrewAI::Task.new(
   The workflow should demonstrate enterprise-level marketing automation capabilities.",
   expected_output: "A comprehensive automation workflow design including flowcharts, tool composition patterns, decision logic, error handling procedures, and implementation guidelines. Include examples of how the workflow adapts based on performance data.",
   agent: automation_architect,
-  dependencies: [performance_analysis_task]
+  context: [performance_analysis_task]
 )
 
 campaign_coordination_task = RCrewAI::Task.new(
+  name: "campaign_coordination",
   description: "Coordinate a complete marketing campaign that demonstrates mastery of tool composition:
   1. Orchestrate all previous tasks into a unified campaign
   2. Ensure seamless data flow between all tools and processes
@@ -936,33 +953,31 @@ campaign_coordination_task = RCrewAI::Task.new(
   This should showcase how tool composition enables marketing campaigns that are greater than the sum of their parts.",
   expected_output: "A complete campaign coordination report including execution timeline, tool interaction maps, performance results, optimization actions taken, and a detailed analysis of how tool composition enhanced overall campaign effectiveness compared to using tools in isolation.",
   agent: campaign_coordinator,
-  dependencies: [automation_workflow_design_task]
+  context: [automation_workflow_design_task]
 )
 
 # Create and Execute Crew
 puts "🚀 Initializing Tool Composition Marketing Crew..."
 
-tool_composition_crew = RCrewAI::Crew.new(
-  "tool_composition_crew",
-  agents: [
-    marketing_strategist,
-    content_specialist, 
-    distribution_manager,
-    performance_analyst,
-    automation_architect,
-    campaign_coordinator
-  ],
-  tasks: [
-    strategy_development_task,
-    content_creation_workflow_task,
-    multi_channel_distribution_task,
-    performance_analysis_task,
-    automation_workflow_design_task,
-    campaign_coordination_task
-  ],
-  process: :sequential,
-  verbose: true
-)
+tool_composition_crew = RCrewAI::Crew.new("tool_composition_crew", process: :sequential, verbose: true)
+
+[
+  marketing_strategist,
+  content_specialist,
+  distribution_manager,
+  performance_analyst,
+  automation_architect,
+  campaign_coordinator
+].each { |agent| tool_composition_crew.add_agent(agent) }
+
+[
+  strategy_development_task,
+  content_creation_workflow_task,
+  multi_channel_distribution_task,
+  performance_analysis_task,
+  automation_workflow_design_task,
+  campaign_coordination_task
+].each { |task| tool_composition_crew.add_task(task) }
 
 # Execute the crew
 puts "\n" + "="*80
@@ -970,7 +985,7 @@ puts "EXECUTING TOOL COMPOSITION DEMONSTRATION"
 puts "="*80
 
 begin
-  results = tool_composition_crew.kickoff
+  results = tool_composition_crew.execute
 
   puts "\n" + "="*80
   puts "TOOL COMPOSITION RESULTS SUMMARY"  

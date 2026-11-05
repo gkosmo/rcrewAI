@@ -19,6 +19,13 @@ Individual AI agents with specific roles and capabilities.
 ### [RCrewAI::Task]({{ site.baseurl }}/api/task)
 Tasks that agents execute to achieve goals.
 
+## Production Controls (0.8 – 0.10)
+
+- **`RCrewAI::Checkpoint`** — save and resume runs. See [Checkpointing]({{ site.baseurl }}/tutorials/checkpointing)
+- **`before_request` / `after_response`, `RCrewAI::Events`** — hooks and tracing. See [Interceptors and Events]({{ site.baseurl }}/tutorials/interceptors-and-events)
+- **`parallel_tools`, `consensus_max_concurrency`, `max_concurrency`** — fan-out limits. See [Concurrency]({{ site.baseurl }}/tutorials/concurrency)
+- **`RCrewAI::CancelToken`, `RCrewAI::StreamCancelled`** — real-time Anthropic calls. See [Live Streaming]({{ site.baseurl }}/tutorials/live-streaming)
+
 ## Capabilities (0.4 – 0.7)
 
 These subsystems are covered in depth by the tutorials (with runnable examples):

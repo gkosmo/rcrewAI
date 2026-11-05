@@ -62,7 +62,6 @@ backend_developer = RCrewAI::Agent.new(
     RCrewAI::Tools::WebSearch.new  # For researching best practices
   ],
   verbose: true,
-  max_execution_time: 600
 )
 
 frontend_developer = RCrewAI::Agent.new(
@@ -229,7 +228,7 @@ results[:results].each_with_index do |task_result, index|
   if task_result[:status] == :completed
     puts "   Result preview: #{task_result[:result][0..100]}..."
   else
-    puts "   Error: #{task_result[:error]&.message}"
+    puts "   Error: #{task_result[:result]}"
   end
   puts
 end
@@ -418,6 +417,7 @@ end
 engineering_manager = RCrewAI::Agent.new(
   name: "engineering_manager",
   role: "Engineering Manager", 
+  goal: "Coordinate engineering delivery",
   manager: true,
   allow_delegation: true
 )
@@ -425,6 +425,7 @@ engineering_manager = RCrewAI::Agent.new(
 product_manager = RCrewAI::Agent.new(
   name: "product_manager",
   role: "Product Manager",
+  goal: "Coordinate product priorities",
   manager: true, 
   allow_delegation: true
 )

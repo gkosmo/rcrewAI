@@ -36,7 +36,7 @@ end
 # Database Connection Tool
 class DatabaseConnectionTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'database_connector'
     @description = 'Connect to various database systems and execute operations'
     @connections = {}
@@ -252,7 +252,7 @@ end
 # ETL Processing Tool
 class ETLProcessingTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'etl_processor'
     @description = 'Extract, Transform, and Load data between systems'
   end
@@ -399,7 +399,7 @@ end
 # Data Quality Tool
 class DataQualityTool < RCrewAI::Tools::Base
   def initialize(**options)
-    super
+    super()
     @name = 'data_quality_manager'
     @description = 'Monitor and manage data quality across database systems'
   end
@@ -861,7 +861,7 @@ results[:results].each do |operation_result|
   if operation_result[:status] == :completed
     puts "   Operation: Successfully completed"
   else
-    puts "   Issue: #{operation_result[:error]&.message}"
+    puts "   Issue: #{operation_result[:result]}"
   end
   puts
 end

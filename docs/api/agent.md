@@ -24,10 +24,11 @@ Creates a new agent instance.
 - `allow_delegation` (Boolean, optional) - Allow agent to delegate tasks (default: false)
 - `manager` (Boolean, optional) - Designate as manager agent (default: false)
 - `max_iterations` (Integer, optional) - Maximum reasoning iterations (default: 10)
-- `max_execution_time` (Integer, optional) - Maximum execution time in seconds (default: 300)
+- `max_execution_time` (Integer, optional) - Stored but not currently enforced (default: 300)
 - `human_input` (Boolean, optional) - Enable human-in-the-loop interactions (default: false)
 - `require_approval_for_tools` (Boolean, optional) - Require human approval for tool usage
 - `require_approval_for_final_answer` (Boolean, optional) - Require human approval for final results
+- `parallel_tools` (Boolean, optional) - Run several tool calls from one turn concurrently (default: true). See [Concurrency]({{ site.baseurl }}/tutorials/concurrency)
 - `llm` (Symbol \| Hash \| client, optional) - Per-agent LLM override: a provider symbol (`:anthropic`), an options hash (`{ provider:, model:, api_key:, temperature: }`), or a pre-built client. Defaults to the global configuration. See [Advanced Agent Options]({{ site.baseurl }}/tutorials/agent-options)
 - `reasoning` (Boolean, optional) - Run a reasoning/planning pass before answering (default: false); surfaced on the result as `:reasoning`
 - `max_reasoning_attempts` (Integer, optional) - Reasoning retries on empty output (default: 3)
@@ -55,7 +56,7 @@ agent = RCrewAI::Agent.new(
 
 ## Instance Methods
 
-### `#execute_task(task)`
+### `#execute_task(task, stream: nil, **opts)`
 
 Executes a given task using the agent's reasoning capabilities.
 
@@ -258,6 +259,8 @@ Maximum reasoning iterations allowed.
 **Type:** Integer
 
 ### `max_execution_time`
+
+**Not currently enforced.** The value is stored, but nothing stops an agent when it's exceeded.
 Maximum execution time in seconds.
 
 **Type:** Integer
