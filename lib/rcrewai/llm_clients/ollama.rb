@@ -213,13 +213,27 @@ module RCrewAI
       end
 
       def format_messages(messages)
+        pending = []
         messages.map do |msg|
-          if msg.is_a?(Hash)
-            { role: msg[:role], content: msg[:content] }
+          next { role: 'user', content: msg.to_s } unless msg.is_a?(Hash)
+
+          if msg[:tool_calls]&.any?
+            pending = msg[:tool_calls].dup
+            assistant_tool_message(msg)
+          elsif msg[:role].to_s == 'tool'
+            call = take_tool_call(pending, msg[:tool_call_id])
+            { role: 'tool', content: msg[:content], tool_name: call&.dig(:name) }.compact
           else
-            { role: 'user', content: msg.to_s }
+            { role: msg[:role], content: msg[:content] }
           end
         end
+      end
+
+      def assistant_tool_message(msg)
+        { role: 'assistant', content: msg[:content].to_s,
+          tool_calls: msg[:tool_calls].map do |call|
+            { function: { name: call[:name], arguments: call[:arguments] || {} } }
+          end }
       end
 
       def ollama_url

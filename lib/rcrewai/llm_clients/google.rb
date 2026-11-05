@@ -85,6 +85,7 @@ module RCrewAI
 
         assembled_text = +''
         tool_calls = []
+        raw_parts = []
         finish_reason = nil
         usage = nil
 
@@ -94,6 +95,7 @@ module RCrewAI
           parts = candidate.dig('content', 'parts') || []
 
           parts.each do |part|
+            raw_parts << part
             if part['text']
               text = part['text']
               assembled_text << text
@@ -101,7 +103,7 @@ module RCrewAI
                                               agent: nil, iteration: nil, text: text))
             elsif part['functionCall']
               fc = part['functionCall']
-              tool_calls << { id: nil, name: fc['name'], arguments: fc['args'] || {} }
+              tool_calls << { id: fc['id'], name: fc['name'], arguments: fc['args'] || {} }
             end
           end
 
@@ -134,6 +136,7 @@ module RCrewAI
         result = {
           content: assembled_text.empty? ? nil : assembled_text,
           tool_calls: tool_calls,
+          raw_content: raw_parts,
           usage: usage || {},
           finish_reason: finish_reason || :stop,
           model: config.model,
@@ -160,7 +163,8 @@ module RCrewAI
         parts = candidate.dig('content', 'parts') || []
         text = parts.select { |p| p['text'] }.map { |p| p['text'] }.join
         tool_calls = parts.select { |p| p['functionCall'] }.map do |p|
-          { id: nil, name: p.dig('functionCall', 'name'), arguments: p.dig('functionCall', 'args') || {} }
+          { id: p.dig('functionCall', 'id'), name: p.dig('functionCall', 'name'),
+            arguments: p.dig('functionCall', 'args') || {} }
         end
         usage_md = body['usageMetadata'] || {}
         finish_reason = tool_calls.any? ? :tool_calls : (FINISH_REASON_MAP[candidate['finishReason']] || :stop)
@@ -168,6 +172,7 @@ module RCrewAI
         {
           content: text.empty? ? nil : text,
           tool_calls: tool_calls,
+          raw_content: parts,
           usage: {
             prompt_tokens: usage_md['promptTokenCount'],
             completion_tokens: usage_md['candidatesTokenCount'],
@@ -182,14 +187,17 @@ module RCrewAI
       def format_messages(messages)
         contents = []
         system_msg = nil
+        pending = []
 
         messages.each do |msg|
           case msg[:role]
           when 'system'
             system_msg = msg[:content]
-            next
           when 'assistant'
-            contents << { role: 'model', parts: [{ text: msg[:content].to_s }] }
+            pending = Array(msg[:tool_calls]).dup
+            contents << { role: 'model', parts: model_parts(msg) }
+          when 'tool'
+            append_function_response(contents, msg, take_tool_call(pending, msg[:tool_call_id]))
           else
             contents << { role: 'user', parts: [{ text: msg[:content].to_s }] }
           end
@@ -200,6 +208,30 @@ module RCrewAI
         end
 
         contents
+      end
+
+      # Parts are replayed as received because Gemini can attach thought
+      # signatures to them.
+      def model_parts(msg)
+        return msg[:raw_content] if msg[:raw_content]
+        return [{ text: msg[:content].to_s }] if msg[:tool_calls].nil? || msg[:tool_calls].empty?
+
+        text = msg[:content].to_s.empty? ? [] : [{ text: msg[:content] }]
+        text + msg[:tool_calls].map do |call|
+          { functionCall: { id: call[:id], name: call[:name], args: call[:arguments] || {} }.compact }
+        end
+      end
+
+      # Results from one turn belong together in a single user content.
+      def append_function_response(contents, msg, call)
+        response = { id: call&.dig(:id), name: call&.dig(:name), response: { result: msg[:content] } }.compact
+        part = { functionResponse: response }
+        last = contents.last
+        if last && last[:parts].first.key?(:functionResponse)
+          last[:parts] << part
+        else
+          contents << { role: 'user', parts: [part] }
+        end
       end
 
       def validate_config!

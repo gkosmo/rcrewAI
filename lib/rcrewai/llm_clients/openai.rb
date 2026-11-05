@@ -21,7 +21,7 @@ module RCrewAI
       def chat(messages:, tools: nil, tool_choice: :auto, stream: nil, **options)
         payload = {
           model: config.model,
-          messages: messages,
+          messages: format_chat_messages(messages),
           temperature: options[:temperature] || config.temperature,
           max_tokens: options[:max_tokens] || config.max_tokens
         }.compact
@@ -190,6 +190,19 @@ module RCrewAI
           model: body['model'] || config.model,
           provider: provider_name
         }
+      end
+
+      # ToolRunner keeps calls as { id:, name:, arguments: }. Chat Completions
+      # wants them wrapped, with the arguments as a JSON string.
+      def format_chat_messages(messages)
+        messages.map do |msg|
+          next msg unless msg.is_a?(Hash) && msg[:tool_calls]&.any?
+
+          msg.merge(tool_calls: msg[:tool_calls].map do |call|
+            { id: call[:id], type: 'function',
+              function: { name: call[:name], arguments: JSON.generate(call[:arguments] || {}) } }
+          end)
+        end
       end
 
       def auth_header

@@ -84,8 +84,34 @@ module RCrewAI
 
       # Every message content is a list of typed blocks.
       def format_messages(messages)
-        messages.reject { |m| m.is_a?(Hash) && m[:role].to_s == 'system' }.map do |m|
-          { role: m[:role].to_s, content: [{ text: m[:content].to_s }] }
+        messages.reject { |m| m.is_a?(Hash) && m[:role].to_s == 'system' }.each_with_object([]) do |m, out|
+          case m[:role].to_s
+          when 'assistant' then out << { role: 'assistant', content: assistant_blocks(m) }
+          when 'tool' then append_tool_result(out, m)
+          else out << { role: m[:role].to_s, content: [{ text: m[:content].to_s }] }
+          end
+        end
+      end
+
+      # Blocks are replayed as received, so reasoning reaches the model unchanged.
+      def assistant_blocks(msg)
+        return msg[:raw_content] if msg[:raw_content]
+        return [{ text: msg[:content].to_s }] if msg[:tool_calls].nil? || msg[:tool_calls].empty?
+
+        text = msg[:content].to_s.empty? ? [] : [{ text: msg[:content] }]
+        text + msg[:tool_calls].map do |call|
+          { toolUse: { toolUseId: call[:id], name: call[:name], input: call[:arguments] || {} } }
+        end
+      end
+
+      # Converse alternates roles, so one turn's results share a user message.
+      def append_tool_result(out, msg)
+        block = { toolResult: { toolUseId: msg[:tool_call_id], content: [{ text: msg[:content].to_s }] } }
+        last = out.last
+        if last && last[:content].first.key?(:toolResult)
+          last[:content] << block
+        else
+          out << { role: 'user', content: [block] }
         end
       end
 
@@ -109,6 +135,7 @@ module RCrewAI
         {
           content: text.empty? ? nil : text,
           tool_calls: tool_calls,
+          raw_content: blocks,
           usage: {
             prompt_tokens: body.dig('usage', 'inputTokens'),
             completion_tokens: body.dig('usage', 'outputTokens'),
