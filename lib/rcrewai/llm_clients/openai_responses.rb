@@ -54,8 +54,26 @@ module RCrewAI
       end
 
       def format_input(messages)
-        messages.reject { |m| m.is_a?(Hash) && m[:role].to_s == 'system' }
-                .map { |m| { role: m[:role].to_s, content: m[:content] } }
+        messages.reject { |m| m.is_a?(Hash) && m[:role].to_s == 'system' }.flat_map do |m|
+          case m[:role].to_s
+          when 'assistant' then assistant_items(m)
+          when 'tool' then [{ type: 'function_call_output', call_id: m[:tool_call_id], output: m[:content] }]
+          else [{ role: m[:role].to_s, content: m[:content] }]
+          end
+        end
+      end
+
+      # Output items are replayed as received, because reasoning models need
+      # their reasoning items alongside the function calls.
+      def assistant_items(msg)
+        return msg[:raw_content] if msg[:raw_content]
+        return [{ role: 'assistant', content: msg[:content] }] if msg[:tool_calls].nil? || msg[:tool_calls].empty?
+
+        text = msg[:content].to_s.empty? ? [] : [{ role: 'assistant', content: msg[:content] }]
+        text + msg[:tool_calls].map do |call|
+          { type: 'function_call', call_id: call[:id], name: call[:name],
+            arguments: JSON.generate(call[:arguments] || {}) }
+        end
       end
 
       # Responses flattens the function definition instead of nesting it under
@@ -75,6 +93,7 @@ module RCrewAI
         {
           content: text.empty? ? nil : text,
           tool_calls: tool_calls,
+          raw_content: output,
           usage: {
             prompt_tokens: body.dig('usage', 'input_tokens'),
             completion_tokens: body.dig('usage', 'output_tokens'),

@@ -44,8 +44,9 @@ It also makes current Claude models work:
 - **Anthropic no longer receives the default `temperature`.** Only a value you set is
   sent. If you set `config.temperature` and use current Claude models, remove it or clear
   it per agent with `llm: { provider: :anthropic, temperature: nil }`.
-- **Anthropic tool loops now send real `tool_use` and `tool_result` blocks** and replay
-  thinking blocks unchanged. Before, tool results went as plain user text.
+- **Tool calls now use each provider's real format.** Before, requests after a tool call
+  were malformed on every provider. Agents with tools should start working, so check any
+  retries or workarounds you added for those failures.
 - **The default models changed.** `:anthropic` now defaults to `claude-opus-5-5` and
   `:google` to `gemini-3.8-flash`. If you rely on a default, check the cost and output, or
   set a model explicitly. Claude prices in the built-in table were also corrected, so
