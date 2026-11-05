@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-05
+
+Makes agents with tools work on real providers, and current Claude models usable. Requests after a tool call were malformed on every provider since 0.3.0, because specs stubbed the LLM and never checked the real request.
+
+**Not yet proven against live APIs.** Request formats are covered by specs against stubbed HTTP. If a provider rejects a tool loop, please [open an issue](https://github.com/gkosmo/rcrewAI/issues).
+
+Contains behavior changes. See `docs/upgrading-to-0.11.md`.
+
 ### Fixed
 - **Behavior change:** `config.model = '...'` was silently ignored for `:openai`, `:anthropic`, `:google` and `:azure`, because each provider's default model took precedence over it. A model now resolves as an explicit `<provider>_model`, then `model`, then the provider default. If your config sets `model` and you have been unknowingly running on a default, you will now get the model you asked for.
 - A global `config.model` no longer follows an agent that switches provider with `llm: :anthropic`; that agent uses its own provider's model.

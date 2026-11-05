@@ -660,7 +660,7 @@ $ rcrewai checkpoint delete RUN_ID
 - **[Hierarchical Teams](examples/hierarchical_crew_example.rb)**: Manager coordination
 - **[Async Execution](examples/async_execution_example.rb)**: Performance optimization
 - **[LLM Providers](docs/tutorials/providers.md)**: Setup for all nine providers
-- **[Upgrading to 0.10](docs/upgrading-to-0.10.md)**: What to check when upgrading
+- **[Upgrading to 0.11](docs/upgrading-to-0.11.md)**: What to check when upgrading
 - **[API Documentation](docs/api/)**: Complete API reference
 
 ## 🎯 Use Cases

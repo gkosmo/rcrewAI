@@ -1,4 +1,4 @@
-# Upgrading to RCrewAI 0.8, 0.9 and 0.10
+# Upgrading to RCrewAI 0.8 through 0.11
 
 These releases are almost entirely additive. To see what's new, read the tutorials on
 [providers](tutorials/providers.md), [checkpointing](tutorials/checkpointing.md),
@@ -27,9 +27,9 @@ no longer needed. Keeping it is harmless.
 no longer installed with the gem. If your app uses them directly, add them to your
 Gemfile.
 
-## Unreleased: after 0.10.0
+## 0.11
 
-The next release changes how configuration resolves:
+**Agents with tools should start working on real providers,** and this release changes how configuration resolves. Check these:
 
 - **`config.model` now takes effect.** It used to be ignored on `:openai`, `:anthropic`,
   `:google` and `:azure`. If you set it, check that it names the model you want, because
@@ -39,7 +39,7 @@ The next release changes how configuration resolves:
 - **`:ollama` no longer needs an API key,** so you can remove any placeholder key.
 - **`:openai_responses` now uses `openai_model`.** It always sent `gpt-4` before.
 
-It also makes current Claude models work:
+It also updates Anthropic support for current Claude models:
 
 - **Anthropic no longer receives the default `temperature`.** Only a value you set is
   sent. If you set `config.temperature` and use current Claude models, remove it or clear
