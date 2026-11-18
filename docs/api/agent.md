@@ -26,7 +26,9 @@ Creates a new agent instance.
 - `max_iterations` (Integer, optional) - Maximum reasoning iterations (default: 10)
 - `max_execution_time` (Integer, optional) - Stored but not currently enforced (default: 300)
 - `human_input` (Boolean, optional) - Enable human-in-the-loop interactions (default: false)
-- `require_approval_for_tools` (Boolean, optional) - Require human approval for tool usage
+- `require_approval_for_tools` (Boolean, optional) - Run no tool without an explicit yes. Without a handler or a terminal, every call is refused. See [Tool Approval Workflows]({{ site.baseurl }}/examples/human-in-the-loop)
+- `approval_handler` (callable, optional) - Answers tool approval requests. Defaults to `config.approval_handler`, then the terminal
+- `approval_timeout` (Numeric, optional) - Seconds to wait for an answer before refusing (default: `config.approval_timeout`, 60)
 - `require_approval_for_final_answer` (Boolean, optional) - Require human approval for final results
 - `parallel_tools` (Boolean, optional) - Run several tool calls from one turn concurrently (default: true). See [Concurrency]({{ site.baseurl }}/tutorials/concurrency)
 - `llm` (Symbol \| Hash \| client, optional) - Per-agent LLM override: a provider symbol (`:anthropic`), an options hash (`{ provider:, model:, api_key:, temperature: }`), or a pre-built client. Defaults to the global configuration. See [Advanced Agent Options]({{ site.baseurl }}/tutorials/agent-options)

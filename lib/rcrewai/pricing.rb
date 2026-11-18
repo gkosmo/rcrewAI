@@ -12,6 +12,7 @@ module RCrewAI
       'gpt-3.5-turbo' => { input: 0.50, output: 1.50 },
       # Anthropic
       'claude-fable-5-1' => { input: 10.00, output: 50.00 },
+      'claude-fable-5' => { input: 10.00, output: 50.00 },
       'claude-opus-5-5' => { input: 4.00, output: 20.00 },
       'claude-opus-5' => { input: 5.00, output: 25.00 },
       'claude-opus-4-8' => { input: 5.00, output: 25.00 },
@@ -20,7 +21,7 @@ module RCrewAI
       'claude-sonnet-5-5' => { input: 2.00, output: 10.00 },
       'claude-sonnet-5' => { input: 2.00, output: 10.00 },
       'claude-sonnet-4-6' => { input: 3.00, output: 15.00 },
-      'claude-haiku-5-5' => { input: 0.10, output: 0.50 }, # prompts up to 100K tokens
+      'claude-haiku-5-5' => { input: 0.10, output: 0.50, long_prompt: { over: 100_000, input: 0.50, output: 2.50 } },
       'claude-haiku-4-5' => { input: 1.00, output: 5.00 },
       'claude-3-5-sonnet-20241022' => { input: 3.00, output: 15.00 },
       'claude-3-haiku-20240307' => { input: 0.25, output: 1.25 },
@@ -37,6 +38,10 @@ module RCrewAI
       table = RCrewAI.configuration.pricing || {}
       entry = table[model] || DEFAULT_PRICES[model]
       return nil unless entry
+
+      # Some models charge a whole request more once its prompt passes a size.
+      long = entry[:long_prompt]
+      entry = long if long && prompt_tokens > long[:over]
 
       ((prompt_tokens * entry[:input]) + (completion_tokens * entry[:output])) / 1_000_000.0
     end

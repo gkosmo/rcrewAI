@@ -106,6 +106,30 @@ agent = RCrewAI::Agent.new(
 # Do you approve this action? (yes/no)
 ```
 
+No tool runs without an explicit yes, whichever provider you use. Only a whole answer of `yes`, `y`, `approve`, `ok` or `continue` counts. Any other answer, a timeout (`approval_timeout:`, 60 seconds by default) or having no terminal is a refusal. The model gets the refusal as the tool's result and carries on.
+
+For background jobs and web apps, supply your own handler. It gets the tool name and arguments:
+
+```ruby
+agent = RCrewAI::Agent.new(
+  name: "data_agent",
+  role: "Data Processor",
+  goal: "Process data safely",
+  tools: [RCrewAI::Tools::SqlDatabase.new],
+  require_approval_for_tools: true,
+  approval_timeout: 600,
+  approval_handler: lambda do |request|
+    # request.tool_name, request.arguments, request.agent, request.call_id
+    answer = ApprovalRequest.ask_and_wait(request.tool_name, request.arguments) # your own UI
+    answer.yes? ? RCrewAI::ToolApproval.approve : RCrewAI::ToolApproval.refuse(answer.note)
+  end
+)
+```
+
+A handler answers `true`, `RCrewAI::ToolApproval.approve` or `RCrewAI::ToolApproval.refuse(reason)`. Anything else, including an exception, is a refusal. It runs on its own thread, one request at a time per agent, so a parallel turn's calls are asked in sequence. `config.approval_handler` sets a default for every agent.
+
+Each decision is emitted as `Events::ToolApprovalRequested` and `Events::ToolApprovalDecided`, with `tool`, `args`, `approved` and `reason`.
+
 ### 3. Real-time Guidance During Reasoning
 
 Humans can provide guidance during agent reasoning loops:
@@ -341,7 +365,7 @@ puts "Approval rate: #{summary[:approvals] / summary[:total_interactions].to_f *
 - Show consequences of actions clearly
 
 ### 5. **Testing and Development**
-- Use auto-approval mode for testing workflows
+- Use `approval_handler: ->(_) { true }` to approve everything when testing workflows
 - Test human interaction flows in development
 - Monitor interaction patterns and optimize prompts
 

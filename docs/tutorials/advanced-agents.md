@@ -168,8 +168,8 @@ supervised = RCrewAI::Agent.new(
 )
 ```
 
-These prompts read from the terminal, so they suit attended runs rather than
-background jobs. The [human-in-the-loop example]({{ site.baseurl }}/examples/human-in-the-loop)
+By default tool approval asks at the terminal, and refuses if there isn't one.
+For background jobs and web apps, give the agent an `approval_handler`. The [human-in-the-loop example]({{ site.baseurl }}/examples/human-in-the-loop)
 covers the task-level options too.
 
 ## Managers and Delegation

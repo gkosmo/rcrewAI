@@ -69,12 +69,7 @@ module RCrewAI
           provide_context_to_agent
 
           # Enable human input for agent if task allows it
-          if @human_input_enabled && agent.respond_to?(:enable_human_input)
-            agent.enable_human_input(
-              require_approval_for_tools: false,
-              require_approval_for_final_answer: @allow_human_guidance
-            )
-          end
+          agent.enable_human_input(require_approval_for_final_answer: @allow_human_guidance) if @human_input_enabled && agent.respond_to?(:enable_human_input)
 
           @result = run_agent_with_output_processing
 
@@ -364,7 +359,7 @@ module RCrewAI
                 when 2 then 'abort'
                 else 'retry'
                 end,
-        reason: choice_result[:choice] || 'Default retry'
+        reason: choice_result[:choice] || 'No answer, so following max_retries'
       }
     end
 

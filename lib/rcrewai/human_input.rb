@@ -90,7 +90,7 @@ module RCrewAI
       display_feedback_request(interaction)
       response = get_user_input(interaction)
 
-      result = { feedback: response, timestamp: Time.now }
+      result = response.nil? ? no_response(feedback: nil) : { feedback: response, timestamp: Time.now }
       record_interaction(interaction, response, result)
 
       result
@@ -233,9 +233,10 @@ module RCrewAI
 
           response
         else
-          # Non-interactive mode (e.g., scripts, tests)
-          puts '⚠️ Non-interactive mode detected, using default response'
-          get_default_response(interaction[:type])
+          # Nobody can answer (a background job, a script). Report that rather
+          # than answer on their behalf.
+          puts '⚠️ Non-interactive mode detected, no response available'
+          nil
         end
       rescue Interrupt
         puts "\n🛑 User interrupted input"
@@ -245,43 +246,34 @@ module RCrewAI
       end
     end
 
-    def get_default_response(interaction_type)
-      case interaction_type
-      when :approval, :confirmation
-        'yes'
-      when :choice
-        '1'
-      when :input, :review, :feedback
-        'Default response - non-interactive mode'
-      else
-        'yes'
-      end
+    # The result of a question nobody answered: no terminal, end of input or a
+    # timeout. Callers can tell this apart from a person's answer.
+    def no_response(**fields)
+      { **fields, no_response: true, reason: 'No response provided', timestamp: Time.now }
     end
 
     def process_approval_response(response, _interaction)
-      return { approved: false, reason: 'No response provided' } if response.nil?
+      return no_response(approved: false) if response.nil?
 
-      response_clean = response.strip.downcase
-
-      approved = if @approval_keywords.any? { |keyword| response_clean.include?(keyword) }
-                   true
-                 elsif @rejection_keywords.any? { |keyword| response_clean.include?(keyword) }
-                   false
-                 else
-                   # Try to interpret ambiguous responses
-                   response_clean.length.positive? && !response_clean.start_with?('n')
-                 end
+      # The whole answer has to be an approval keyword. Anything else is a
+      # refusal, because "deny" contains "y" and "not ok" contains "ok".
+      answer = response.strip.downcase.sub(/[.!]+\z/, '')
+      approved = @approval_keywords.include?(answer)
 
       {
         approved: approved,
         response: response,
-        reason: approved ? 'User approved' : 'User rejected',
+        reason: if approved
+                  'User approved'
+                else
+                  @rejection_keywords.include?(answer) ? 'User rejected' : 'Unclear answer treated as a refusal'
+                end,
         timestamp: Time.now
       }
     end
 
     def process_input_response(response, interaction)
-      return { input: nil, valid: false, reason: 'No response provided' } if response.nil?
+      return no_response(input: nil, valid: false) if response.nil?
 
       # Validate input if validation rules provided
       validation_result = validate_input(response, interaction[:options][:validation] || {})
@@ -296,10 +288,11 @@ module RCrewAI
     end
 
     def process_choice_response(response, interaction)
-      return { choice: nil, valid: false, reason: 'No response provided' } if response.nil?
+      return no_response(choice: nil, choice_index: nil, valid: false) if response.nil?
 
       choices = interaction[:options][:choices]
       response_clean = response.strip
+      return no_response(choice: nil, choice_index: nil, valid: false) if response_clean.empty?
 
       # Try to match by number
       if response_clean.match?(/^\d+$/)
@@ -339,7 +332,7 @@ module RCrewAI
     end
 
     def process_review_response(response, _interaction)
-      return { feedback: nil, approved: false, reason: 'No response provided' } if response.nil?
+      return no_response(feedback: nil, approved: false) if response.nil?
 
       response_clean = response.strip.downcase
 

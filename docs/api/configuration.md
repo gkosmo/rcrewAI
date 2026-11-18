@@ -140,7 +140,7 @@ Access the current configuration:
 ```ruby
 config = RCrewAI.configuration
 puts config.llm_provider  # => :openai
-puts config.model         # => "gpt-4"
+puts config.model         # => "gpt-4o"
 ```
 
 ### `RCrewAI.reset_configuration!`
@@ -182,13 +182,13 @@ RCrewAI.reset_configuration!
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `openai_model` | `gpt-4` | OpenAI model name |
+| `openai_model` | `gpt-4o` | OpenAI model name |
 | `anthropic_model` | `claude-opus-5-5` | Anthropic model name |
 | `google_model` | `gemini-3.8-flash` | Google model name |
-| `azure_model` | `gpt-4` | Azure OpenAI model name |
+| `azure_model` | `gpt-4o` | Azure OpenAI model name |
 | `model` | none | Used when the provider-specific option isn't set, and required for `:ollama`, `:openai_compatible`, `:bedrock` and `:snowflake` |
 
-The `gpt-4` defaults are old, so set a model explicitly for OpenAI and Azure. A model resolves as the provider-specific option, then `model`, then the default.
+A model resolves as the provider-specific option, then `model`, then the default.
 
 ### Azure-Specific Settings
 

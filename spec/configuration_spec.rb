@@ -8,10 +8,16 @@ RSpec.describe RCrewAI::Configuration do
   describe '#initialize' do
     it 'sets default values' do
       expect(config.llm_provider).to eq(:openai)
-      expect(config.model).to eq('gpt-4')
+      expect(config.model).to eq('gpt-4o')
       expect(config.temperature).to eq(0.1)
       expect(config.max_tokens).to eq(4000)
       expect(config.timeout).to eq(120)
+    end
+
+    it 'defaults to a current model on each provider' do
+      expect(RCrewAI::Configuration::DEFAULT_MODELS).to eq(
+        openai: 'gpt-4o', anthropic: 'claude-opus-5-5', google: 'gemini-3.8-flash', azure: 'gpt-4o'
+      )
     end
 
     it 'loads environment variables' do

@@ -3,6 +3,7 @@
 require 'securerandom'
 require_relative 'events'
 require_relative 'provider_schema'
+require_relative 'tool_execution'
 
 module RCrewAI
   class ToolRunner
@@ -19,6 +20,7 @@ module RCrewAI
       @parallel_tools = opts.fetch(:parallel_tools, true)
       @max_tool_concurrency = opts.fetch(:max_tool_concurrency, DEFAULT_TOOL_CONCURRENCY)
       @tool_usage_lock = Mutex.new
+      @execution = ToolExecution.new(agent: agent, event_sink: @sink)
     end
 
     def run(messages:)
@@ -118,7 +120,7 @@ module RCrewAI
 
       started = monotonic_ms
       begin
-        result = tool.execute_with_validation(call[:arguments] || {})
+        result = @execution.call(tool, call[:arguments], call_id: call[:id], iteration: iter)
         duration = monotonic_ms - started
         record_tool_usage(call, result)
         emit(Events::ToolCallResult, iteration: iter,
@@ -128,6 +130,10 @@ module RCrewAI
           history: { tool: call[:name], args: call[:arguments], result: result, duration_ms: duration },
           message: tool_result_message(call[:id], result.to_s)
         }
+      rescue ToolApproval::Refused => e
+        emit(Events::ToolCallError, iteration: iter,
+                                    tool: call[:name], call_id: call[:id], error: e.message)
+        { message: tool_result_message(call[:id], "REFUSED: #{e.message}") }
       rescue StandardError => e
         emit(Events::ToolCallError, iteration: iter,
                                     tool: call[:name], call_id: call[:id], error: e.message)
