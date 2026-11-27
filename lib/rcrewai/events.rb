@@ -20,6 +20,9 @@ module RCrewAI
     # ToolCallStart, Requested, Decided, then ToolCallError: it never gets a result.
     ToolApprovalRequested = Struct.new(*BASE_ATTRS, :tool, :args, :call_id, keyword_init: true)
     ToolApprovalDecided   = Struct.new(*BASE_ATTRS, :tool, :args, :call_id, :approved, :reason, keyword_init: true)
+    # Only agents with a harness emit this, for a call it stopped before it ran.
+    # +source+ is :rule or :hook; +args+ are the checked arguments.
+    ToolBlocked = Struct.new(*BASE_ATTRS, :tool, :args, :call_id, :reason, :source, keyword_init: true)
     Thinking        = Struct.new(*BASE_ATTRS, :text, keyword_init: true)
     Usage           = Struct.new(*BASE_ATTRS, :prompt_tokens, :completion_tokens, :total_tokens, :cost_usd,
                                  :cached_tokens, keyword_init: true)
@@ -31,7 +34,7 @@ module RCrewAI
     # keyword_init initializer is wrapped rather than replaced so every event
     # type gets this without restating the attribute list.
     [Event, TextDelta, TextDone, ToolCallStart, ToolCallResult, ToolCallError,
-     ToolApprovalRequested, ToolApprovalDecided, Thinking, Usage, IterationStart, IterationEnd, Error].each do |klass|
+     ToolApprovalRequested, ToolApprovalDecided, ToolBlocked, Thinking, Usage, IterationStart, IterationEnd, Error].each do |klass|
       klass.prepend(Module.new do
         def initialize(**kwargs)
           kwargs[:id] ||= SecureRandom.uuid

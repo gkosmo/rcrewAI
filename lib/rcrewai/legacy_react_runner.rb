@@ -106,7 +106,7 @@ module RCrewAI
           results << "Tool #{tool_name} result: #{result}"
         rescue ToolApproval::Refused => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name, call_id: nil, error: e.message)
-          results << e.message
+          results << e.model_message
         rescue StandardError => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name,
                                       call_id: nil, error: e.message)

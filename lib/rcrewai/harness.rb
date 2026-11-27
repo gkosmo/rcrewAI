@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative 'tool_approval'
 require_relative 'harness/rule'
 
 module RCrewAI
@@ -19,6 +20,18 @@ module RCrewAI
     OUTCOMES = %i[allow ask block].freeze
 
     Decision = Struct.new(:outcome, :reason, keyword_init: true)
+
+    # Raised instead of running a call the harness stopped. A Refused, so every
+    # runner already turns it into a tool result and the run carries on.
+    class Blocked < ToolApproval::Refused
+      def initialize(tool_name, reason)
+        super(tool_name, reason, "Tool '#{tool_name}' was not run: #{reason}")
+      end
+
+      def model_message
+        "REFUSED: #{message}"
+      end
+    end
 
     attr_reader :default, :hook_timeout
 
@@ -55,7 +68,9 @@ module RCrewAI
       checked = snapshot(args.nil? ? {} : args.to_hash)
       applicable = @rules.select { |rule| rule.applies?(tool_name.to_s, checked) }
       strictest(applicable)
-    rescue StandardError, ScriptError => e
+    # SystemStackError isn't a StandardError: a condition that recurses too deep
+    # still blocks rather than escaping the check.
+    rescue StandardError, ScriptError, SystemStackError => e
       Decision.new(outcome: :block, reason: "A rule condition failed (#{e.class}), so the call was not checked")
     end
 
