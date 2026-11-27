@@ -11,6 +11,9 @@ applies on both runners, to parallel tool calls and to `Agent#use_tool`,
 including its retries. It isn't a sandbox: read [Not a sandbox](#not-a-sandbox)
 before relying on it.
 
+To learn it step by step, follow the
+[agent harness tutorial]({{ site.baseurl }}/tutorials/agent-harness).
+
 ## Example
 
 ```ruby

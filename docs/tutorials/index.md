@@ -62,6 +62,23 @@ Welcome to the RCrewAI tutorials! These step-by-step guides will take you from b
 
 ---
 
+## 🛡️ Tool Safety
+
+### [Building an Agent Harness]({{ site.baseurl }}/tutorials/agent-harness)
+**Control what an agent's tools may do**, step by step, with a project assistant
+that edits files. No API key needed.
+
+**What you'll learn:**
+- Blocking calls by tool and argument, and what the model is told
+- Approval handlers, and what happens in a job with no terminal
+- Hooks that run before and after a tool call
+- Testing a harness without a model, and what a harness can't stop
+
+**Prerequisites:** [Custom Tools Development]({{ site.baseurl }}/tutorials/custom-tools)  
+**Difficulty:** Intermediate ⭐⭐
+
+---
+
 ## 🔌 Production Controls (0.8 – 0.10)
 
 ### [LLM Providers]({{ site.baseurl }}/tutorials/providers)
