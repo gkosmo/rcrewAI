@@ -201,3 +201,27 @@ Run each hook on its own thread, as `Agent#ask_handler` does: rescue `StandardEr
 - [ ] **Step 3:** Write `docs/api/harness.md`: the spec's interface example using real tool names, rule precedence, `matching:` semantics, hook return values, failure behaviour, and a "Not a sandbox" section stating that rules see only names and arguments, don't limit what `code_executor` runs, don't resolve `..` or symlinks, and don't cover `output_file`, memory or guardrails. Link it from the README, and add a CHANGELOG "Added" entry under Unreleased.
 - [ ] **Step 4:** Run the doc example in a scratch script against a fake LLM; it must build and block a `.env` write. Full suite and RuboCop pass.
 - [ ] **Step 5:** Commit `Guard the tool call site exactly and document the harness`.
+
+### Task 7: Tutorial
+
+Added by the owner when approving the plan.
+
+**Files:** Create `docs/tutorials/agent-harness.md`, `spec/docs/agent_harness_tutorial_spec.rb`. Modify `docs/tutorials/index.md`; link to the tutorial from `docs/api/harness.md`.
+
+**Interfaces — Consumes:** the public interface from Tasks 2 to 5 only.
+
+The tutorial builds one agent step by step, a project assistant that edits files in a working directory, for a Ruby developer who has used rcrewai but not a harness. Front matter and tone follow the other files in `docs/tutorials/`. Sections, in order, each with runnable code and what the reader sees:
+
+1. An agent with `FileReader` and `FileWriter` and no harness: nothing stops a write to `.env`.
+2. Rules: allow reads, block secrets and lockfiles with `matching:`, and what the model is told.
+3. Asking: unlisted tools ask; writing an `approval_handler`; what happens in a job with no terminal.
+4. A before hook that refuses content that looks like a key, and the return-value rule (only `true` or `nil` pass).
+5. An after hook that syntax-checks a written Ruby file (`ruby -c`, run with an argument array, not a shell string) and returns the error for the model to fix.
+6. Testing your harness without a model: `harness.decide`, and `agent.use_tool`.
+7. Not a sandbox: the limits listed in `docs/api/harness.md`, including that built-in file tools' own path restrictions are separate from harness rules.
+
+- [ ] **Step 1: Write the failing test.** It reads the tutorial, evaluates every fenced block tagged ```` ```ruby ```` in order in one shared binding, inside a temporary working directory, with a scripted LLM and no network, and asserts: no block raises; `.env` is never written once the harness is in place; the refusal text appears in what the model received; the after hook's syntax error appears there too. Blocks that can't run in a test (provider configuration) are tagged ```` ```text ```` or preceded by `<!-- not-run -->`.
+- [ ] **Step 2:** Run → FAIL, tutorial file missing.
+- [ ] **Step 3:** Write the tutorial and add it to the index.
+- [ ] **Step 4:** Spec, full suite and RuboCop pass.
+- [ ] **Step 5:** Commit `Add the agent harness tutorial`.
