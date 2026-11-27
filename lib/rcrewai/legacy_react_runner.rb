@@ -44,7 +44,8 @@ module RCrewAI
         reasoning = response[:content] || ''
         last_reasoning = reasoning
 
-        action_result, iteration_history, refused = parse_and_execute_actions(reasoning, iter)
+        action_result, iteration_history = parse_and_execute_actions(reasoning, iter)
+        used_tools = !action_result.empty?
         history.concat(iteration_history)
         last_action_result = action_result
 
@@ -54,8 +55,10 @@ module RCrewAI
         finish_reason = response[:finish_reason]
         emit(Events::IterationEnd, iteration: iter, finish_reason: finish_reason)
 
-        # A refusal has to reach the model, even if this turn looks finished.
-        next if refused
+        # The model hasn't seen a tool's result or refusal yet, so a tool turn
+        # never ends the run: providers report :stop on it, and a FINAL_ANSWER
+        # written alongside the call is a guess.
+        next if used_tools
         next unless task_complete?(reasoning, action_result) || finish_reason == :stop
 
         final = extract_final_result(reasoning, action_result)
@@ -78,7 +81,6 @@ module RCrewAI
     def parse_and_execute_actions(reasoning, iter)
       results = []
       iteration_history = []
-      refused = false
       reasoning.scan(/USE_TOOL\[(\w+)\]\(([^)]*)\)/).each do |tool_name, params_str|
         params = parse_tool_params(params_str)
         tool = find_tool(tool_name)
@@ -103,7 +105,6 @@ module RCrewAI
           iteration_history << { tool: tool_name, args: params, result: result, duration_ms: duration }
           results << "Tool #{tool_name} result: #{result}"
         rescue ToolApproval::Refused => e
-          refused = true
           emit(Events::ToolCallError, iteration: iter, tool: tool_name, call_id: nil, error: e.message)
           results << e.message
         rescue StandardError => e
@@ -113,7 +114,7 @@ module RCrewAI
         end
       end
 
-      [results.join("\n"), iteration_history, refused]
+      [results.join("\n"), iteration_history]
     end
 
     def parse_tool_params(params_str)
@@ -151,7 +152,7 @@ module RCrewAI
       final_lines = lines.last(3).join(' ')
       return final_lines if final_lines.length > 20
 
-      action_result
+      action_result.to_s.empty? ? reasoning.strip : action_result
     end
 
     def emit(klass, iteration:, **attrs)
