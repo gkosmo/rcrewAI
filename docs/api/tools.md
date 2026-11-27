@@ -77,7 +77,8 @@ agent = RCrewAI::Agent.new(
 - File size limits
 - Extension restrictions
 - Directory traversal protection  
-- Working directory enforcement
+- Working directory enforcement: paths are resolved the way the system resolves them, so symlinks and `..` can't lead outside, and a link and its target must both have an allowed extension
+- Not a sandbox: hard links, and another process changing a path during a call, aren't covered
 
 **Example Usage:**
 ```
@@ -109,7 +110,7 @@ USE_TOOL[filewriter](file_path=report.md, content=## Report\nThis is my analysis
 
 **Security Features:**
 - Content size validation
-- Path traversal protection
+- Path traversal protection: the same checks as `FileReader`; writing through a symlink whose target doesn't exist is refused
 - Extension restrictions
 - Automatic directory creation
 

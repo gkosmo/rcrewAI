@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'base'
+require_relative 'path_containment'
 require 'pathname'
 require 'fileutils'
 
@@ -41,10 +42,14 @@ module RCrewAI
       private
 
       def write_file(file_path, content, mode, encoding)
-        path = Pathname.new(file_path)
+        requested = Pathname.new(file_path)
 
-        # Security checks
-        validate_file_path!(path)
+        # Security checks. Everything after containment uses the resolved path.
+        path = contained_path!(requested)
+        reject_directory_path!(requested)
+        # Both names, or a link called notes.txt could overwrite any file inside.
+        validate_file_extension!(requested)
+        validate_file_path!(path, requested)
         validate_content!(content)
         validate_mode!(mode)
 
@@ -59,22 +64,33 @@ module RCrewAI
         format_write_result(path, content, mode)
       end
 
-      def validate_file_path!(path)
-        # Prevent directory traversal
-        resolved_path = path.expand_path.to_s
-        working_dir = Dir.pwd
-        raise ToolError, 'Access denied: file outside working directory' unless resolved_path.start_with?(working_dir)
+      def contained_path!(path)
+        real = PathContainment.resolve(path)
+        raise ToolError, 'Access denied: file outside working directory' unless real
 
-        # Check file extension
+        Pathname.new(real)
+      end
+
+      # Resolving drops a trailing "/" or "/.", which would turn a path to a
+      # directory into a path to a file.
+      def reject_directory_path!(requested)
+        raise ToolError, "Path is not a file: #{requested}" if requested.to_s.end_with?('/', '/.')
+      end
+
+      def validate_file_extension!(path)
         extension = path.extname.downcase
-        unless @allowed_extensions.include?(extension) || @allowed_extensions.include?('*')
-          raise ToolError, "File type not allowed: #{extension}"
-        end
+        return if @allowed_extensions.include?(extension) || @allowed_extensions.include?('*')
+
+        raise ToolError, "File type not allowed: #{extension}"
+      end
+
+      def validate_file_path!(path, requested)
+        validate_file_extension!(path)
 
         # If file exists, check if it's writable
         return unless path.exist?
-        raise ToolError, "Path is not a file: #{path}" unless path.file?
-        raise ToolError, "File is not writable: #{path}" unless path.writable?
+        raise ToolError, "Path is not a file: #{requested}" unless path.file?
+        raise ToolError, "File is not writable: #{requested}" unless path.writable?
       end
 
       def validate_content!(content)
