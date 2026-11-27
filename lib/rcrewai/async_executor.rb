@@ -70,11 +70,16 @@ module RCrewAI
 
       results = []
       futures.each do |task, future|
+        # Future#value returns nil for a failure or a timeout instead of raising.
         result = future.value(timeout)
-        results << { task: task, result: result, status: :completed }
-      rescue Concurrent::TimeoutError
-        @logger.error "Task #{task.name} timed out after #{timeout}s"
-        results << { task: task, result: 'Task timed out', status: :timeout }
+        raise future.reason if future.rejected?
+
+        if future.fulfilled?
+          results << { task: task, result: result, status: :completed }
+        else
+          @logger.error "Task #{task.name} timed out after #{timeout}s"
+          results << { task: task, result: 'Task timed out', status: :timeout }
+        end
       rescue StandardError => e
         @logger.error "Task #{task.name} failed: #{e.message}"
         results << { task: task, result: e.message, status: :failed }

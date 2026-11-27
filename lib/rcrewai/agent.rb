@@ -10,12 +10,14 @@ require_relative 'tools/base'
 require_relative 'tool_runner'
 require_relative 'legacy_react_runner'
 require_relative 'human_input'
+require_relative 'final_answer_review'
 require_relative 'tool_approval'
 require_relative 'tool_execution'
 
 module RCrewAI
   class Agent
     include HumanInteractionExtensions
+    include FinalAnswerReview
     include AgentAugmentations
     attr_reader :name, :role, :goal, :backstory, :tools, :memory, :llm_client, :knowledge, :rate_limiter
     attr_accessor :verbose, :allow_delegation, :max_iterations, :max_execution_time, :manager
@@ -83,11 +85,20 @@ module RCrewAI
         execution_time = Time.now - start_time
         @logger.info "Task completed in #{execution_time.round(2)}s"
 
+        # Before anything records the answer, so a rejected one goes nowhere.
+        if @require_approval_for_final_answer
+          runner_result = runner_result.merge(content: request_final_answer_approval(runner_result[:content].to_s))
+        end
+
         result_string = runner_result[:content].to_s
         memory.add_execution(task, result_string, execution_time)
         task.result = result_string
 
         build_task_result(task, runner_result, reasoning: reasoning)
+      rescue FinalAnswerRejected => e
+        @logger.warn e.message
+        task.result = "Task failed: #{e.message}"
+        raise
       rescue StandardError => e
         @logger.error "Task execution failed: #{e.message}"
         task.result = "Task failed: #{e.message}"
@@ -210,7 +221,11 @@ module RCrewAI
     def enable_human_input(**options)
       @human_input_enabled = true
       @require_approval_for_tools = options.fetch(:require_approval_for_tools, @require_approval_for_tools)
-      @require_approval_for_final_answer = options.fetch(:require_approval_for_final_answer, false)
+      # Remembered so disable_human_input can put the agent's own setting back.
+      @final_answer_setting = @require_approval_for_final_answer unless defined?(@final_answer_setting)
+      if options.key?(:require_approval_for_final_answer)
+        @require_approval_for_final_answer = options[:require_approval_for_final_answer]
+      end
       @logger.info "Human input enabled for agent #{name}"
     end
 
@@ -218,7 +233,9 @@ module RCrewAI
     # set. Turn it off explicitly with +agent.require_approval_for_tools = false+.
     def disable_human_input
       @human_input_enabled = false
-      @require_approval_for_final_answer = false
+      if defined?(@final_answer_setting)
+        @require_approval_for_final_answer = remove_instance_variable(:@final_answer_setting)
+      end
       @logger.info "Human input disabled for agent #{name}"
     end
 
@@ -464,59 +481,6 @@ module RCrewAI
       e.message
     end
 
-    def request_final_answer_approval(proposed_answer)
-      return proposed_answer unless @require_approval_for_final_answer && @human_input_enabled
-
-      review_result = request_human_review(
-        proposed_answer,
-        review_criteria: %w[Accuracy Completeness Clarity Relevance],
-        timeout: 180
-      )
-
-      if review_result[:approved]
-        @logger.info 'Final answer approved by human'
-        proposed_answer
-      else
-        @logger.info 'Human provided feedback on final answer'
-
-        if review_result[:suggested_changes].any?
-          @logger.info "Suggested changes: #{review_result[:suggested_changes].join('; ')}"
-
-          # Ask human what to do with the feedback
-          choice_result = request_human_choice(
-            'How should I handle your feedback?',
-            [
-              'Revise the answer based on feedback',
-              'Use the answer as-is despite feedback',
-              'Let me provide a completely new answer'
-            ]
-          )
-
-          case choice_result[:choice_index]
-          when 0
-            # Revise based on feedback
-            revision_context = "Original answer: #{proposed_answer}\n\nFeedback: #{review_result[:feedback]}"
-            revise_answer_with_feedback(revision_context)
-          when 1
-            # Use as-is
-            proposed_answer
-          when 2
-            # Get new answer from human
-            new_answer_result = request_human_input(
-              'Please provide the final answer:',
-              help_text: 'Provide the complete answer for this task'
-            )
-            new_answer_result[:input] || proposed_answer
-          else
-            proposed_answer
-          end
-        else
-          # Generic feedback without specific suggestions
-          revise_answer_with_feedback("Original answer: #{proposed_answer}\n\nFeedback: #{review_result[:feedback]}")
-        end
-      end
-    end
-
     def revise_answer_with_feedback(feedback_context)
       @logger.info 'Revising answer based on human feedback'
 
@@ -600,4 +564,5 @@ module RCrewAI
 
   class AgentError < Error; end
   class ToolNotFoundError < AgentError; end
+  class FinalAnswerRejected < AgentError; end
 end

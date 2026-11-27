@@ -471,6 +471,9 @@ module RCrewAI
         bounded_parallel(participants.map { |a| [a] }) do |agent|
           content = extract_content(agent.execute_task(task, stream: crew.stream_sink))
           { agent: agent, content: content }
+        rescue FinalAnswerRejected
+          # A person said no: that fails the task, not just this proposal.
+          raise
         rescue StandardError => e
           @logger.warn "Agent #{agent.name} failed to propose: #{e.message}"
           nil

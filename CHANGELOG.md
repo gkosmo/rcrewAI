@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Breaking:** an agent with `require_approval_for_final_answer: true` now fails the task unless a person accepts the answer. The check uses the terminal, so such an agent can't finish a task in a background job.
+
+### Security
+- **`require_approval_for_final_answer` was never enforced.** Nothing called its check. Task runs now do. No answer, no choice or three reviews without acceptance raises `RCrewAI::FinalAnswerRejected`, which `Task` does not retry. A revised answer is reviewed again. A review or revision that errors also rejects, one rejection fails a consensual task, and concurrent reviews take turns at the terminal. The option no longer also needs `human_input: true`, and a task with `human_input: true` no longer clears it.
+
+### Fixed
+- **Context trimming broke tool runs.** With `respect_context_window`, the oldest messages went first: the task itself, then tool calls without their results or results without their calls. The task and the latest turn are now kept, and a tool call is dropped together with its results. The size estimate now counts tool call arguments.
+- The legacy runner ended after the first tool turn when a provider reported `finish_reason: :stop`, so the model never saw the result. A turn that uses a tool no longer ends the run, even with a `FINAL_ANSWER[...]` in it. A short plain answer on a later turn was returned as an empty string.
+- `AsyncExecutor#wait_for_completion` reported failed and timed-out tasks as completed.
+
 ## [0.12.0] - 2026-11-05
 
 **Breaking:** an agent with `require_approval_for_tools: true` now runs no tool without an explicit yes. Unattended runs that relied on the old behaviour will have their tool calls refused until you give the agent an `approval_handler`. Agents that don't set the option are unaffected.

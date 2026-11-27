@@ -39,8 +39,12 @@ module RCrewAI
     module_function
 
     def estimate_tokens(input)
-      text = input.is_a?(Array) ? input.map { |m| m[:content].to_s }.join : input.to_s
+      text = input.is_a?(Array) ? input.map { |m| message_text(m) }.join : input.to_s
       (text.length / CHARS_PER_TOKEN.to_f).ceil
+    end
+
+    def message_text(message)
+      "#{message[:content]}#{message[:tool_calls]}"
     end
 
     def window_for(model)
@@ -48,39 +52,50 @@ module RCrewAI
     end
 
     # Returns a copy of +messages+ trimmed to fit within (limit - reserve)
-    # tokens. System messages are always kept, as is the final message. The
-    # oldest non-system, non-final messages are dropped first.
+    # tokens, dropping the oldest turns first. Always kept: system messages, the
+    # latest turn and, once the model has replied, the first user message (the
+    # task). An assistant's tool calls and their results are one turn, because
+    # providers reject a history that has one without the other.
     def fit(messages, limit:, reserve: 0)
       budget = limit - reserve
       return messages if estimate_tokens(messages) <= budget
 
-      system = messages.select { |m| m[:role] == 'system' }
-      last = messages.last
-      # Candidates for dropping: everything that isn't a system message or the
-      # final message, oldest first.
-      middle = messages.reject { |m| m[:role] == 'system' || m.equal?(last) }
+      turns = group_turns(messages)
+      pinned = [task_turn(turns), turns.last].compact
+      droppable = turns.reject { |t| t.first[:role] == 'system' || pinned.any? { |p| p.equal?(t) } }
 
-      kept_middle = middle.dup
-      until fits?(system, kept_middle, last, budget) || kept_middle.empty?
-        kept_middle.shift # drop the oldest
+      until droppable.empty? || estimate_tokens(turns.flatten(1)) <= budget
+        oldest = droppable.shift
+        turns.delete_if { |t| t.equal?(oldest) }
       end
 
-      rebuild(messages, system, kept_middle, last)
+      turns.flatten(1)
     end
 
     # -- helpers --------------------------------------------------------------
 
-    def fits?(system, middle, last, budget)
-      parts = system + middle
-      parts << last unless system.include?(last) || middle.include?(last)
-      estimate_tokens(parts) <= budget
+    def group_turns(messages)
+      messages.each_with_object([]) do |message, turns|
+        if turns.any? && tool_result?(message, turns.last.last)
+          turns.last << message
+        else
+          turns << [message]
+        end
+      end
     end
 
-    def rebuild(original, system, middle, last)
-      keep = (system + middle)
-      keep << last unless keep.include?(last)
-      # Preserve original ordering.
-      original.select { |m| keep.include?(m) }
+    # The legacy runner has no tool role: a result is the user message that
+    # follows a USE_TOOL[...] reply.
+    def tool_result?(message, previous)
+      return true if message[:role] == 'tool'
+
+      message[:role] == 'user' && previous[:role] == 'assistant' && previous[:content].to_s.include?('USE_TOOL[')
+    end
+
+    def task_turn(turns)
+      return nil unless turns.any? { |t| t.first[:role] == 'assistant' }
+
+      turns.find { |t| t.first[:role] == 'user' }
     end
   end
 end
