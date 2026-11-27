@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'base'
+require_relative 'path_containment'
 require 'pdf-reader'
 require 'pathname'
 
@@ -41,8 +42,9 @@ module RCrewAI
         output_format = params.fetch(:output_format, 'text') # 'text', 'json', 'markdown'
 
         begin
-          validate_pdf_file!(file_path)
-          result = process_pdf(file_path, pages, extract_text, extract_metadata)
+          real_path = validate_pdf_file!(file_path)
+          result = process_pdf(real_path, pages, extract_text, extract_metadata)
+          result[:file_path] = file_path
           format_pdf_result(result, output_format)
         rescue StandardError => e
           "PDF processing failed: #{e.message}"
@@ -52,9 +54,14 @@ module RCrewAI
       private
 
       def validate_pdf_file!(file_path)
-        path = Pathname.new(file_path)
+        # Containment comes first, so that nothing is revealed about files
+        # outside. The caller opens the resolved path returned here.
+        real = PathContainment.resolve(file_path, root: @working_directory)
+        raise ToolError, 'Access denied: file outside working directory' unless real
 
-        # Security and existence checks
+        path = Pathname.new(real)
+
+        # Existence checks
         raise ToolError, "PDF file does not exist: #{file_path}" unless path.exist?
 
         raise ToolError, "Path is not a file: #{file_path}" unless path.file?
@@ -62,7 +69,8 @@ module RCrewAI
         raise ToolError, "PDF file is not readable: #{file_path}" unless path.readable?
 
         # Check file extension
-        raise ToolError, "File is not a PDF: #{file_path}" unless path.extname.downcase == '.pdf'
+        names = [Pathname.new(file_path), path]
+        raise ToolError, "File is not a PDF: #{file_path}" unless names.all? { |n| n.extname.downcase == '.pdf' }
 
         # Check file size
         file_size = path.size
@@ -70,11 +78,7 @@ module RCrewAI
 
         raise ToolError, "PDF file is empty: #{file_path}" if file_size.zero?
 
-        # Prevent directory traversal
-        resolved_path = path.realpath.to_s
-        return if resolved_path.start_with?(@working_directory)
-
-        raise ToolError, 'Access denied: file outside working directory'
+        real
       end
 
       def process_pdf(file_path, pages_param, extract_text, extract_metadata)

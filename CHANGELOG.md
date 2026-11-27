@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Breaking** if you relied on the file tools reaching outside the working directory through a symlink, or on writing through a symlink whose target doesn't exist yet. The second is now refused even when the target would be inside.
+
+### Security
+- **`FileReader`, `FileWriter` and `PdfProcessor` could be led outside their working directory.** Paths were compared as string prefixes, so from `/app` a path into `/app-secrets` passed. `FileWriter` also followed symlinks out, including links to files that didn't exist yet. All three now resolve a path the way the system does, require it to be inside the directory, and open the resolved path.
+- A symlink could get around `allowed_extensions`, e.g. `notes.txt` pointing at `.env`. The link and its target must now both have an allowed extension.
+
+Hard links, and another process changing a path between the check and the open, aren't covered. These tools aren't a sandbox. `EmailSender` attachments are not restricted to any directory.
+
+### Changed
+- Paths outside the directory are refused before checking whether they exist, and `FileReader` checks the file type before saying whether a file exists or how big it is. Errors name the path that was asked for.
+- `FileWriter` refuses a path ending in `/` or `/.`.
+- `FileWriter` treats `~` in a path as an ordinary directory name, which is how the file was already opened.
+- `PdfProcessor` accepts a relative or symlinked `working_directory`; both used to refuse every file.
+
 ## [0.12.0] - 2026-11-05
 
 **Breaking:** an agent with `require_approval_for_tools: true` now runs no tool without an explicit yes. Unattended runs that relied on the old behaviour will have their tool calls refused until you give the agent an `approval_handler`. Agents that don't set the option are unaffected.

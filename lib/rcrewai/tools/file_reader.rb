@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'base'
+require_relative 'path_containment'
 require 'pathname'
 
 module RCrewAI
@@ -38,12 +39,17 @@ module RCrewAI
       private
 
       def read_file(file_path, encoding, lines = nil)
-        path = Pathname.new(file_path)
+        requested = Pathname.new(file_path)
 
-        # Security checks
-        validate_file_path!(path)
-        validate_file_size!(path)
+        # Security checks. Containment comes first, so that nothing is revealed
+        # about files outside, and everything after uses the resolved path.
+        path = contained_path!(requested)
+        # Types before anything about the file itself. Both names, or a link
+        # called notes.txt could read any file inside.
+        validate_file_extension!(requested)
         validate_file_extension!(path)
+        validate_file_path!(path, requested)
+        validate_file_size!(path)
 
         content = if lines
                     read_lines(path, encoding, lines)
@@ -51,20 +57,21 @@ module RCrewAI
                     read_full_file(path, encoding)
                   end
 
-        format_file_content(path, content, lines)
+        format_file_content(path, requested.basename, content, lines)
       end
 
-      def validate_file_path!(path)
-        raise ToolError, "File does not exist: #{path}" unless path.exist?
-        raise ToolError, "Path is not a file: #{path}" unless path.file?
-        raise ToolError, "File is not readable: #{path}" unless path.readable?
+      def contained_path!(path)
+        real = PathContainment.resolve(path)
+        raise ToolError, 'Access denied: file outside working directory' unless real
 
-        # Prevent directory traversal
-        resolved_path = path.realpath.to_s
-        working_dir = Dir.pwd
-        return if resolved_path.start_with?(working_dir)
+        Pathname.new(real)
+      end
 
-        raise ToolError, 'Access denied: file outside working directory'
+      # Errors name the path that was asked for, not where it resolved to.
+      def validate_file_path!(path, requested)
+        raise ToolError, "File does not exist: #{requested}" unless path.exist?
+        raise ToolError, "Path is not a file: #{requested}" unless path.file?
+        raise ToolError, "File is not readable: #{requested}" unless path.readable?
       end
 
       def validate_file_size!(path)
@@ -98,8 +105,8 @@ module RCrewAI
         File.read(path, encoding: encoding)
       end
 
-      def format_file_content(path, content, lines = nil)
-        header = "File: #{path.basename}"
+      def format_file_content(path, name, content, lines = nil)
+        header = "File: #{name}"
         header += " (first #{lines} lines)" if lines
         header += "\nSize: #{path.size} bytes"
         header += "\nModified: #{path.mtime.strftime('%Y-%m-%d %H:%M:%S')}"
