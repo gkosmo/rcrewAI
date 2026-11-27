@@ -33,7 +33,7 @@ module RCrewAI
       iter = 0
       total_usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
       last_reasoning = nil
-      last_action_result = nil
+      last_tool_output = nil
 
       while iter < @max_iterations
         iter += 1
@@ -44,10 +44,10 @@ module RCrewAI
         reasoning = response[:content] || ''
         last_reasoning = reasoning
 
-        action_result, iteration_history = parse_and_execute_actions(reasoning, iter)
+        action_result, iteration_history, tool_output = parse_and_execute_actions(reasoning, iter)
         used_tools = !action_result.empty?
         history.concat(iteration_history)
-        last_action_result = action_result
+        last_tool_output = tool_output
 
         msgs << { role: 'assistant', content: reasoning }
         msgs << { role: 'user', content: action_result } if action_result && !action_result.empty?
@@ -66,7 +66,7 @@ module RCrewAI
                         finish_reason: finish_reason || :stop, usage: total_usage)
       end
 
-      final = extract_final_result(last_reasoning || '', last_action_result) ||
+      final = extract_final_result(last_reasoning || '', last_tool_output) ||
               'Task execution reached limits without clear completion'
       finalize(content: final, history: history, iter: iter,
                finish_reason: :max_iterations, usage: total_usage)
@@ -78,6 +78,8 @@ module RCrewAI
       @agent.respond_to?(:fit_context) ? @agent.fit_context(messages) : messages
     end
 
+    # Returns the text for the model, the history entries, and that text without
+    # the after hooks' notes, which is what may become the final answer.
     def parse_and_execute_actions(reasoning, iter)
       results = []
       iteration_history = []
@@ -91,30 +93,44 @@ module RCrewAI
         if tool.nil?
           err = "tool not found: #{tool_name}"
           emit(Events::ToolCallError, iteration: iter, tool: tool_name, call_id: nil, error: err)
-          results << "Tool #{tool_name} failed: #{err}"
+          results << [["Tool #{tool_name} failed: #{err}"], []]
           next
         end
 
         started = monotonic_ms
+        notes = []
         begin
-          result = @execution.call(tool, params, iteration: iter, coerce: false)
+          result = @execution.call(tool, params, iteration: iter, coerce: false, notes: notes)
           duration = monotonic_ms - started
           @agent.memory.add_tool_usage(tool_name, params, result) if @agent.respond_to?(:memory) && @agent.memory
           emit(Events::ToolCallResult, iteration: iter, tool: tool_name,
                                        call_id: nil, result: result, duration_ms: duration)
           iteration_history << { tool: tool_name, args: params, result: result, duration_ms: duration }
-          results << "Tool #{tool_name} result: #{result}"
+          results << [["Tool #{tool_name} result: ", result.to_s], notes]
         rescue ToolApproval::Refused => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name, call_id: nil, error: e.message)
-          results << e.message
+          results << [[e.model_message], notes]
         rescue StandardError => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name,
                                       call_id: nil, error: e.message)
-          results << "Tool #{tool_name} failed: #{e.message}"
+          results << [["Tool #{tool_name} failed: ", e.message], notes]
         end
       end
 
-      [results.join("\n"), iteration_history]
+      without_notes = results.map { |pieces, _| [pieces, []] }
+      [turn_text(results), iteration_history, turn_text(without_notes)]
+    end
+
+    # +results+ is each call's pieces of text and notes. Calls in one turn can
+    # return text in different encodings.
+    def turn_text(results)
+      Harness::Hooks.join(results.map { |pieces, notes| with_notes(pieces, notes) }, "\n")
+    end
+
+    # The harness's after-hook notes go only to the model, after the result.
+    # Never raises, whatever the encodings of the parts.
+    def with_notes(pieces, notes)
+      Harness::Hooks.model_text(pieces, notes)
     end
 
     def parse_tool_params(params_str)

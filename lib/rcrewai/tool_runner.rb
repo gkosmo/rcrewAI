@@ -91,11 +91,15 @@ module RCrewAI
       return tool_calls.map { |tc| execute_tool_call(tc, iter) } unless parallel?(tool_calls)
 
       # Events are emitted from worker threads, so carry the run span across
-      # the boundary: Events.with_parent is thread-local by design.
+      # the boundary: Events.with_parent is thread-local by design. So is the
+      # mark of a hook this run is inside, which refuses tool calls back
+      # through its harness.
       span = Events.current_parent
+      running = Harness::Hooks.running
       tool_calls.each_slice(@max_tool_concurrency).flat_map do |slice|
-        slice.map { |tc| Thread.new { Events.with_parent(span) { execute_tool_call(tc, iter) } } }
-             .map(&:value)
+        slice.map do |tc|
+          Thread.new { Harness::Hooks.carrying(running) { Events.with_parent(span) { execute_tool_call(tc, iter) } } }
+        end.map(&:value)
       end
     end
 
@@ -119,8 +123,9 @@ module RCrewAI
       end
 
       started = monotonic_ms
+      notes = []
       begin
-        result = @execution.call(tool, call[:arguments], call_id: call[:id], iteration: iter)
+        result = @execution.call(tool, call[:arguments], call_id: call[:id], iteration: iter, notes: notes)
         duration = monotonic_ms - started
         record_tool_usage(call, result)
         emit(Events::ToolCallResult, iteration: iter,
@@ -128,17 +133,23 @@ module RCrewAI
                                      duration_ms: duration)
         {
           history: { tool: call[:name], args: call[:arguments], result: result, duration_ms: duration },
-          message: tool_result_message(call[:id], result.to_s)
+          message: tool_result_message(call[:id], with_notes([result.to_s], notes))
         }
       rescue ToolApproval::Refused => e
         emit(Events::ToolCallError, iteration: iter,
                                     tool: call[:name], call_id: call[:id], error: e.message)
-        { message: tool_result_message(call[:id], "REFUSED: #{e.message}") }
+        { message: tool_result_message(call[:id], with_notes(['REFUSED: ', e.message], notes)) }
       rescue StandardError => e
         emit(Events::ToolCallError, iteration: iter,
                                     tool: call[:name], call_id: call[:id], error: e.message)
-        { message: tool_result_message(call[:id], "ERROR: #{e.message}") }
+        { message: tool_result_message(call[:id], with_notes(['ERROR: ', e.message], notes)) }
       end
+    end
+
+    # The harness's after-hook notes go only to the model, after the result.
+    # Never raises, whatever the encodings of the parts.
+    def with_notes(pieces, notes)
+      Harness::Hooks.model_text(pieces, notes)
     end
 
     # Agent memory is shared across the worker threads of one turn.

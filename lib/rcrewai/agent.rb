@@ -13,6 +13,7 @@ require_relative 'human_input'
 require_relative 'final_answer_review'
 require_relative 'tool_approval'
 require_relative 'tool_execution'
+require_relative 'harness'
 
 module RCrewAI
   class Agent
@@ -20,6 +21,8 @@ module RCrewAI
     include FinalAnswerReview
     include AgentAugmentations
     attr_reader :name, :role, :goal, :backstory, :tools, :memory, :llm_client, :knowledge, :rate_limiter
+    # The Harness applied to every tool call this agent makes, or nil.
+    attr_reader :harness
     attr_accessor :verbose, :allow_delegation, :max_iterations, :max_execution_time, :manager
     # Set by the crew so agents see shared knowledge in addition to their own.
     attr_writer :crew_knowledge, :require_approval_for_tools
@@ -45,6 +48,7 @@ module RCrewAI
       @approval_lock = Mutex.new
       @logger = Logger.new($stdout)
       @logger.level = verbose ? Logger::DEBUG : Logger::INFO
+      @harness = checked_harness(options[:harness])
       @reasoning = options.fetch(:reasoning, false)
       @parallel_tools = options.fetch(:parallel_tools, true)
       @max_reasoning_attempts = options.fetch(:max_reasoning_attempts, 3)
@@ -138,7 +142,7 @@ module RCrewAI
       @logger.debug "Using tool: #{tool_name} with params: #{params}"
 
       begin
-        result = ToolExecution.new(agent: self).call(tool, params, coerce: false)
+        result = call_tool_logging_notes(tool, params)
 
         # Store tool usage in memory
         memory.add_tool_usage(tool_name, params, result)
@@ -146,14 +150,14 @@ module RCrewAI
         result
       rescue ToolApproval::Refused => e
         @logger.info "Tool usage refused: #{tool_name}"
-        e.message
+        e.model_message
       rescue StandardError => e
         @logger.error "Tool execution failed: #{e.message}"
 
         # Offer human intervention if tool fails and human input is enabled
         raise e unless @human_input_enabled
 
-        handle_tool_failure(tool_name, params, e)
+        handle_tool_failure(tool, params, e)
       end
     end
 
@@ -244,6 +248,16 @@ module RCrewAI
     end
 
     private
+
+    # Rules that can never apply are an error; rules naming tools the agent
+    # hasn't got are logged, since tools can be added later.
+    def checked_harness(harness)
+      return nil if harness.nil?
+      raise ArgumentError, "harness: must be an RCrewAI::Harness, got #{harness.class}" unless harness.is_a?(Harness)
+
+      harness.validate_tools(@tools).each { |warning| @logger.warn warning }
+      harness
+    end
 
     # Resolves the +llm:+ option into an LLM client. See LLMClient.resolve.
     def build_llm_client(llm)
@@ -413,10 +427,14 @@ module RCrewAI
     end
 
     # On its own thread so that a timeout stops a handler that never returns.
+    # It carries the mark of a hook the call is made from (see
+    # Harness::Hooks::RUNNING), so the handler's tool calls back through that
+    # hook's harness are refused at once.
     def ask_handler(handler, request, timeout)
+      running = Harness::Hooks.running
       thread = Thread.new do
         Thread.current.report_on_exception = false
-        ToolApproval.decision_from(handler.call(request))
+        Harness::Hooks.carrying(running) { ToolApproval.decision_from(handler.call(request)) }
       rescue StandardError, ScriptError => e
         @logger.warn "Approval handler failed: #{e.class}: #{e.message}"
         ToolApproval.refuse("The approval handler failed (#{e.class})")
@@ -427,7 +445,19 @@ module RCrewAI
       ToolApproval.refuse("No answer within #{timeout} seconds")
     end
 
-    def handle_tool_failure(tool_name, params, error)
+    # Outside a runner there's no model to read the harness's after-hook notes,
+    # so they're logged, and the tool's own result is returned (or its error
+    # raised) as without them.
+    def call_tool_logging_notes(tool, params)
+      notes = []
+      ToolExecution.new(agent: self).call(tool, params, coerce: false, notes: notes)
+    ensure
+      notes&.each { |note| @logger.info "After-hook note for #{tool.name}: #{note}" }
+    end
+
+    # +tool+ is the one that failed, so a retry runs it however it was named.
+    def handle_tool_failure(tool, params, error)
+      tool_name = tool.name
       @logger.warn 'Requesting human intervention for tool failure'
 
       choices = [
@@ -450,8 +480,7 @@ module RCrewAI
       when 0
         # Retry with same parameters
         @logger.info 'Human requested retry with same parameters'
-        tool = tools.find { |t| t.name == tool_name }
-        ToolExecution.new(agent: self).call(tool, params, coerce: false)
+        call_tool_logging_notes(tool, params)
       when 1
         # Retry with different parameters
         new_params_result = request_human_input(
@@ -462,9 +491,7 @@ module RCrewAI
 
         if new_params_result[:valid]
           @logger.info 'Human provided new parameters, retrying tool'
-          tool = tools.find { |t| t.name == tool_name }
-          ToolExecution.new(agent: self).call(tool, new_params_result[:processed_input].transform_keys(&:to_sym),
-                                              coerce: false)
+          call_tool_logging_notes(tool, new_params_result[:processed_input].transform_keys(&:to_sym))
         else
           "Invalid parameters provided: #{new_params_result[:reason]}"
         end
@@ -478,7 +505,7 @@ module RCrewAI
         raise AgentError, "Task aborted by human due to tool failure: #{error.message}"
       end
     rescue ToolApproval::Refused => e
-      e.message
+      e.model_message
     end
 
     def revise_answer_with_feedback(feedback_context)

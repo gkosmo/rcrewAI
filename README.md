@@ -137,6 +137,22 @@ puts "✅ Crew completed #{results[:completed_tasks]}/#{results[:total_tasks]} t
 
 With `require_approval_for_tools: true`, no tool runs without an explicit yes, on any provider. Without a terminal or an `approval_handler`, every tool call is refused, so give background jobs a handler. See [tool approval](docs/examples/human-in-the-loop.md#2-tool-approval-workflows).
 
+For rules per tool, give an agent a harness. It can allow, ask about or block each call by tool name and arguments, and run hooks before and after:
+
+```ruby
+harness = RCrewAI::Harness.new(default: :ask) do
+  allow :file_reader, :file_writer
+  # .env, .env.local, config/.ENV and the like, in any case
+  block :file_writer, matching: { file_path: %r{(\A|/)\.env(\.|\z)}i },
+                      reason: '.env files hold secrets and are read-only.'
+end
+
+RCrewAI::Agent.new(name: 'dev', role: 'Developer', goal: 'Tidy up',
+                   tools: [RCrewAI::Tools::FileReader.new, RCrewAI::Tools::FileWriter.new], harness: harness)
+```
+
+It isn't a sandbox: it doesn't limit what a tool does once it runs. See the [tool-call harness](docs/api/harness.md).
+
 ## 🔧 LLM Provider Support
 
 ```ruby

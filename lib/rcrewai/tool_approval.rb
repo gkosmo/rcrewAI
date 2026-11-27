@@ -35,10 +35,15 @@ module RCrewAI
     class Refused < RCrewAI::Error
       attr_reader :tool_name, :reason
 
-      def initialize(tool_name, reason)
+      def initialize(tool_name, reason, message = nil)
         @tool_name = tool_name
         @reason = reason
-        super("Tool '#{tool_name}' was not run because approval was refused: #{reason}")
+        super(message || "Tool '#{tool_name}' was not run because approval was refused: #{reason}")
+      end
+
+      # What the legacy runner and Agent#use_tool tell the model.
+      def model_message
+        message
       end
     end
 

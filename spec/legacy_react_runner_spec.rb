@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative 'support/harness_helpers'
 require_relative 'tool_runner_spec' # for FakeTool
 
 RSpec.describe RCrewAI::LegacyReactRunner do
@@ -62,5 +63,30 @@ RSpec.describe RCrewAI::LegacyReactRunner do
     result = run_replies('USE_TOOL[echo](msg=hi) FINAL_ANSWER[a guess]', 'FINAL_ANSWER[checked]')
 
     expect(result[:content]).to eq('checked')
+  end
+end
+
+# Without a harness too: joining one turn's results used to raise on these.
+RSpec.describe RCrewAI::LegacyReactRunner, 'tool text in mixed encodings' do
+  let(:tool) do
+    Class.new(RCrewAI::Tools::Base) do
+      tool_name 'enc'
+      description 'returns text in two encodings'
+      param :kind, type: :string
+
+      def execute(kind:)
+        kind == 'binary' ? "caf\xC3\xA9".b : 'café'
+      end
+    end.new
+  end
+
+  it 'is converted to UTF-8 instead of failing the run' do
+    llm = HarnessLLM.new(native: false, turns: [{ content: 'USE_TOOL[enc](kind=utf8) USE_TOOL[enc](kind=binary)',
+                                                  tool_calls: [], finish_reason: :length, usage: {} }])
+    agent = RCrewAI::Agent.new(name: 'a', role: 'r', goal: 'g', tools: [tool], llm: llm)
+
+    agent.execute_task(RCrewAI::Task.new(name: 't', description: 'do it', expected_output: 'x'))
+
+    expect(llm.requests.last.last[:content]).to eq("Tool enc result: café\nTool enc result: café")
   end
 end

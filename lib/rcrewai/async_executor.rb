@@ -57,8 +57,9 @@ module RCrewAI
     end
 
     def execute_single_task_async(task)
+      running = Harness::Hooks.running # see Harness::Hooks::RUNNING
       future = Concurrent::Future.execute(executor: @thread_pool) do
-        execute_task_with_monitoring(task)
+        Harness::Hooks.carrying(running) { execute_task_with_monitoring(task) }
       end
 
       @futures[task] = future

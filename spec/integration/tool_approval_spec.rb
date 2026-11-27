@@ -42,6 +42,53 @@ class ApprovalFakeLLM
   end
 end
 
+# Every line in lib/ that looks like it calls an execute method. See the guard
+# at the end.
+ALLOWED_EXECUTE_CALLS = [
+  # ToolExecution#call and #run: the only places a tool runs.
+  'rcrewai/tool_execution.rb: coerce ? tool.execute_with_validation(arguments) : tool.execute(**arguments)',
+  'rcrewai/tool_execution.rb: tool.execute(**arguments.transform_keys(&:to_sym))',
+  'rcrewai/tool_execution.rb: tool.execute_with_validation(arguments)',
+  # Not calls: #prepared? reads the method's owner, and #run asks whether the
+  # tool has it.
+  'rcrewai/tool_execution.rb: Object.instance_method(:method).bind_call(tool, :execute_with_validation).owner == Tools::Base',
+  'rcrewai/tool_execution.rb: if prepared || !tool.respond_to?(:execute_with_validation)',
+  # A thread pool future, then Task#execute, Process#execute and Crew#execute.
+  'rcrewai/async_executor.rb: future = Concurrent::Future.execute(executor: @thread_pool) do',
+  'rcrewai/async_executor.rb: result = task.execute',
+  'rcrewai/process.rb: result = task.execute',
+  'rcrewai/crew.rb: results = @process_instance.execute',
+  'rcrewai/cli.rb: crew.execute',
+  # SQLite3::Database#execute: the memory store, and SqlDatabase's own query,
+  # which is only reached from inside that tool's #execute.
+  'rcrewai/memory/sqlite_store.rb: @db.execute(',
+  "rcrewai/memory/sqlite_store.rb: @db.execute('SELECT * FROM memories WHERE scope = ?', [scope]).map { |row| to_record(row) }",
+  "rcrewai/memory/sqlite_store.rb: @db.execute('DELETE FROM memories WHERE scope = ?', [scope])",
+  "rcrewai/memory/sqlite_store.rb: @db.execute('DELETE FROM memories WHERE id = ? AND scope = ?', [id, scope])",
+  'rcrewai/memory/sqlite_store.rb: @db.execute(sql, params).map { |row| to_record(row) }',
+  'rcrewai/memory/sqlite_store.rb: @db.execute(<<~SQL)',
+  "rcrewai/memory/sqlite_store.rb: @db.execute('CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories (scope)')",
+  'rcrewai/tools/sql_database.rb: rows = db.execute(limited_query)'
+].freeze
+
+# The text scan behind the one-call-site guard.
+module ExecuteCallScan
+  CALL = Regexp.union(
+    # tool.execute, tool&.execute, tool::execute and a line starting .execute
+    /(?:\.|::)\s*execute(?:_with_validation)?\b/,
+    # Any :execute symbol: send, __send__, method, &:execute
+    /:["']?execute(?:_with_validation)?\b/,
+    # The method named by a string
+    /\b(?:send|__send__|public_send|method|public_method)\b[\s(]*["']execute/
+  )
+
+  # The lines that look like a call to an execute method, stripped. def lines
+  # count: a one-line method can make a call.
+  def self.calls_in(lines)
+    lines.grep(CALL).map(&:strip).reject { |line| line.start_with?('#') }
+  end
+end
+
 # Full agent runs against a fake LLM, with a spy tool. What matters here is
 # whether the tool ran and what the model was told.
 RSpec.describe 'tool approval' do
@@ -354,15 +401,65 @@ RSpec.describe 'tool approval' do
     end
   end
 
-  # Keeps the choke point the only one: anything that calls a tool directly from
-  # lib/ would skip the check again.
+  # Keeps the choke point the only one: another call to a tool's #execute in
+  # lib/ would skip the approval check and the agent's harness. This lists every
+  # line that looks like it calls or names an execute method, tool or not, and
+  # compares exactly, so a second call in an already listed file fails too.
+  # Before adding an entry, find out what the receiver is. If it can be a tool,
+  # don't add it: go through ToolExecution#call instead.
+  #
+  # It reads text, one line at a time, so it can't see:
+  # - a name built at run time (send("exec" + "ute"), send(name), %i[execute]);
+  # - a call with no receiver, such as execute(**args) inside a tool or inside
+  #   tool.instance_eval { };
+  # - a call split so that the dot ends one line and execute starts the next;
+  # - another method that ends up calling execute, here or in a dependency;
+  # - code in a string that is later evaluated without matching the above.
   it 'has one place in lib/ that executes a tool' do
-    direct = Dir[File.join(RCrewAI.root, 'lib/**/*.rb')].flat_map do |file|
-      File.readlines(file).grep(/\btool\.execute|execute_with_validation\(/)
-          .reject { |line| line.strip.start_with?('#', 'def ') }
-          .map { |line| "#{File.basename(file)}: #{line.strip}" }
+    lib = File.join(RCrewAI.root, 'lib')
+    found = Dir[File.join(lib, '**/*.rb')].flat_map do |file|
+      ExecuteCallScan.calls_in(File.readlines(file)).map { |line| "#{file.delete_prefix("#{lib}/")}: #{line}" }
     end
 
-    expect(direct.map { |entry| entry.split(':').first }.uniq).to eq(['tool_execution.rb'])
+    expect(found.sort).to eq(ALLOWED_EXECUTE_CALLS.sort)
+  end
+
+  [
+    'tool.execute(**args)',
+    'tool&.execute',
+    'tool . execute',
+    '  .execute(**args)',
+    'def run(t, a) = t.execute(**a)',
+    'def run(t) t.execute end',
+    'def self.execute(t) = t',
+    't::execute()',
+    'tool.execute_with_validation(args)',
+    'send :execute',
+    "send('execute')",
+    'tool.send(:execute, **args)',
+    'tool.send(:"execute")',
+    'public_send("execute#{suffix}")',
+    "tool.public_send 'execute_with_validation', args",
+    'tool.__send__(:execute)',
+    'tools.each(&:execute)',
+    'tool.method(:execute).call',
+    'tool.public_method("execute").call'
+  ].each do |code|
+    it "the guard sees #{code}" do
+      expect(ExecuteCallScan.calls_in(["      #{code}\n"])).to eq([code.strip])
+    end
+  end
+
+  [
+    '# tool.execute(**args)',
+    'def execute(**params)',
+    'def execute_with_validation(args_hash)',
+    'crew.execute_task(task)',
+    'raise TaskExecutionError, "No tasks to execute"',
+    'grant revoke exec execute call load_file'
+  ].each do |code|
+    it "the guard ignores #{code}" do
+      expect(ExecuteCallScan.calls_in(["      #{code}\n"])).to be_empty
+    end
   end
 end

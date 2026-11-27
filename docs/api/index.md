@@ -19,6 +19,9 @@ Individual AI agents with specific roles and capabilities.
 ### [RCrewAI::Task]({{ site.baseurl }}/api/task)
 Tasks that agents execute to achieve goals.
 
+### [RCrewAI::Harness]({{ site.baseurl }}/api/harness)
+Rules and hooks for an agent's tool calls.
+
 ## Production Controls (0.8 – 0.10)
 
 - **`RCrewAI::Checkpoint`** — save and resume runs. See [Checkpointing]({{ site.baseurl }}/tutorials/checkpointing)
