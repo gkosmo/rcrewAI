@@ -7,19 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-**Breaking** if you relied on the file tools reaching outside the working directory through a symlink, or on writing through a symlink whose target doesn't exist yet. The second is now refused even when the target would be inside.
+**Breaking** if you relied on the file tools reaching outside the working directory through a symlink, or on writing through a symlink whose target doesn't exist yet. The second is now refused even when the target would be inside. Also breaking: `EmailSender` refuses attachments from outside the working directory unless you set `attachment_directory:`.
 
 ### Security
 - **`FileReader`, `FileWriter` and `PdfProcessor` could be led outside their working directory.** Paths were compared as string prefixes, so from `/app` a path into `/app-secrets` passed. `FileWriter` also followed symlinks out, including links to files that didn't exist yet. All three now resolve a path the way the system does, require it to be inside the directory, and open the resolved path.
 - A symlink could get around `allowed_extensions`, e.g. `notes.txt` pointing at `.env`. The link and its target must now both have an allowed extension.
+- **`EmailSender` attachments are now limited to one directory:** the working directory, or `attachment_directory:`. Paths are resolved the same way, and a link and its target must both have an allowed type. Before, any path was accepted. With `mail` 2.8.1 the tool couldn't deliver any message (see Known issues), so this closes the route before sending is fixed.
 
-Hard links, and another process changing a path between the check and the open, aren't covered. These tools aren't a sandbox. `EmailSender` attachments are not restricted to any directory.
+Hard links, and another process changing a path between the check and the open, aren't covered. These tools aren't a sandbox. The working directory can hold secrets with an allowed type, so give `EmailSender` an `attachment_directory:` of its own.
 
 ### Changed
 - Paths outside the directory are refused before checking whether they exist, and `FileReader` checks the file type before saying whether a file exists or how big it is. Errors name the path that was asked for.
 - `FileWriter` refuses a path ending in `/` or `/.`.
 - `FileWriter` treats `~` in a path as an ordinary directory name, which is how the file was already opened.
 - `PdfProcessor` accepts a relative or symlinked `working_directory`; both used to refuse every file.
+
+### Known issues
+- `EmailSender` doesn't use its `from_address` or SMTP options: they're read inside blocks where they're `nil`, so a message has no sender and the `mail` library rejects it.
 
 ## [0.12.0] - 2026-11-05
 

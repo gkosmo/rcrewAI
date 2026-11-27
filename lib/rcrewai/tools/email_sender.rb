@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'base'
+require_relative 'path_containment'
 require 'net/smtp'
 require 'mail'
 
@@ -17,7 +18,11 @@ module RCrewAI
       param :bcc,      type: :string, required: false, description: 'BCC recipients (comma-separated)'
       param :reply_to, type: :string, required: false, description: 'Reply-to address'
       param :attachments, type: :array, required: false, items: { type: :string },
-                          description: 'File paths to attach. Allowed extensions: pdf, txt, doc(x), xls(x), jpg, png, gif, zip.'
+                          description: 'File paths to attach, from the allowed attachment directory only. ' \
+                                       'Allowed extensions: pdf, txt, doc(x), xls(x), jpg, png, gif, zip.'
+
+      ATTACHMENT_EXTENSIONS = %w[.pdf .txt .doc .docx .xls .xlsx .jpg .png .gif .zip].freeze
+      MAX_ATTACHMENT_SIZE = 10_000_000
 
       def initialize(**options)
         super()
@@ -28,6 +33,9 @@ module RCrewAI
         @from_address = options[:from_address] || @username
         @use_tls = options.fetch(:use_tls, true)
         @max_recipients = options.fetch(:max_recipients, 10)
+        # Attachments come only from here. nil means the working directory at
+        # the time of the call.
+        @attachment_directory = options[:attachment_directory]
         setup_mail_configuration
       end
 
@@ -162,24 +170,30 @@ module RCrewAI
                             [attachments.to_s]
                           end
 
-        attachment_list.each do |attachment_path|
-          raise ToolError, "Attachment file not found: #{attachment_path}" unless File.exist?(attachment_path)
+        attachment_list.each { |attachment| add_attachment(mail, attachment.to_s) }
+      end
 
-          # Security check - only allow certain file types
-          allowed_extensions = %w[.pdf .txt .doc .docx .xls .xlsx .jpg .png .gif .zip]
-          extension = File.extname(attachment_path).downcase
+      def add_attachment(mail, requested)
+        # Containment comes first, so that nothing is revealed about files
+        # outside. Only the resolved path is read from here on.
+        path = PathContainment.resolve(requested, root: @attachment_directory || Dir.pwd)
+        raise ToolError, 'Access denied: attachment outside the allowed directory' unless path
 
-          unless allowed_extensions.include?(extension)
-            raise ToolError, "Attachment file type not allowed: #{extension}"
-          end
+        # Both names, or a link called notes.txt could send any file inside.
+        [requested, path].each do |name|
+          extension = File.extname(name).downcase
+          next if ATTACHMENT_EXTENSIONS.include?(extension)
 
-          # Size check (max 10MB per attachment)
-          if File.size(attachment_path) > 10_000_000
-            raise ToolError, "Attachment too large: #{File.basename(attachment_path)} (max 10MB)"
-          end
-
-          mail.add_file(attachment_path)
+          raise ToolError, "Attachment file type not allowed: #{extension}"
         end
+
+        raise ToolError, "Attachment file not found: #{requested}" unless File.file?(path)
+
+        if File.size(path) > MAX_ATTACHMENT_SIZE
+          raise ToolError, "Attachment too large: #{File.basename(requested)} (max 10MB)"
+        end
+
+        mail.add_file(filename: File.basename(requested), content: File.binread(path))
       end
 
       def format_email_result(result, to_addresses)
