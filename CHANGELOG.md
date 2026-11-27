@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Breaking:** an agent with `require_approval_for_final_answer: true` now fails the task unless a person accepts the answer. The check uses the terminal, so such an agent can't finish a task in a background job.
 
+### Added
+- `RCrewAI::Harness` and `harness:` on `Agent`: allow, ask about or block each tool call by tool name and arguments (`matching:`, `if:`), and run `before` and `after` hooks. `before` hooks fail closed. Unlisted tools ask by default. It isn't a sandbox. See `docs/api/harness.md`, including its limits. For agents with a harness, every tool path coerces arguments and rejects undeclared ones (for tools that use the base `execute_with_validation`), and nested keys in object arguments reach the tool as strings. Other agents don't use any of this.
+- New events `Events::ToolBlocked` (a rule or hook stopped a call) and `Events::ToolHookFailed` (a harness hook failed). Only agents with a harness emit them.
+- `Tools::Base#prepare_arguments`, which coerces arguments without running the tool.
+
 ### Security
 - **`require_approval_for_final_answer` was never enforced.** Nothing called its check. Task runs now do. No answer, no choice or three reviews without acceptance raises `RCrewAI::FinalAnswerRejected`, which `Task` does not retry. A revised answer is reviewed again. A review or revision that errors also rejects, one rejection fails a consensual task, and concurrent reviews take turns at the terminal. The option no longer also needs `human_input: true`, and a task with `human_input: true` no longer clears it.
 
@@ -16,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Context trimming broke tool runs.** With `respect_context_window`, the oldest messages went first: the task itself, then tool calls without their results or results without their calls. The task and the latest turn are now kept, and a tool call is dropped together with its results. The size estimate now counts tool call arguments.
 - The legacy runner ended after the first tool turn when a provider reported `finish_reason: :stop`, so the model never saw the result. A turn that uses a tool no longer ends the run, even with a `FINAL_ANSWER[...]` in it. A short plain answer on a later turn was returned as an empty string.
 - `AsyncExecutor#wait_for_completion` reported failed and timed-out tasks as completed.
+- **Behavior change, with or without a harness:** retrying a failed tool in `Agent#use_tool` (with human input) now retries the same tool object. It used to look the tool up again by the name you passed, so a tool found by its class name raised `NoMethodError`, or a different tool with that name could run.
 
 ## [0.12.0] - 2026-11-05
 

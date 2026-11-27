@@ -42,6 +42,30 @@ class ApprovalFakeLLM
   end
 end
 
+# Every line in lib/ that calls an execute method. See the last example.
+ALLOWED_EXECUTE_CALLS = [
+  # ToolExecution#call and #run: the only places a tool runs.
+  'rcrewai/tool_execution.rb: coerce ? tool.execute_with_validation(arguments) : tool.execute(**arguments)',
+  'rcrewai/tool_execution.rb: tool.execute(**arguments.transform_keys(&:to_sym))',
+  'rcrewai/tool_execution.rb: tool.execute_with_validation(arguments)',
+  # A thread pool future, then Task#execute, Process#execute and Crew#execute.
+  'rcrewai/async_executor.rb: future = Concurrent::Future.execute(executor: @thread_pool) do',
+  'rcrewai/async_executor.rb: result = task.execute',
+  'rcrewai/process.rb: result = task.execute',
+  'rcrewai/crew.rb: results = @process_instance.execute',
+  'rcrewai/cli.rb: crew.execute',
+  # SQLite3::Database#execute: the memory store, and SqlDatabase's own query,
+  # which is only reached from inside that tool's #execute.
+  'rcrewai/memory/sqlite_store.rb: @db.execute(',
+  "rcrewai/memory/sqlite_store.rb: @db.execute('SELECT * FROM memories WHERE scope = ?', [scope]).map { |row| to_record(row) }",
+  "rcrewai/memory/sqlite_store.rb: @db.execute('DELETE FROM memories WHERE scope = ?', [scope])",
+  "rcrewai/memory/sqlite_store.rb: @db.execute('DELETE FROM memories WHERE id = ? AND scope = ?', [id, scope])",
+  'rcrewai/memory/sqlite_store.rb: @db.execute(sql, params).map { |row| to_record(row) }',
+  'rcrewai/memory/sqlite_store.rb: @db.execute(<<~SQL)',
+  "rcrewai/memory/sqlite_store.rb: @db.execute('CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories (scope)')",
+  'rcrewai/tools/sql_database.rb: rows = db.execute(limited_query)'
+].freeze
+
 # Full agent runs against a fake LLM, with a spy tool. What matters here is
 # whether the tool ran and what the model was told.
 RSpec.describe 'tool approval' do
@@ -354,15 +378,23 @@ RSpec.describe 'tool approval' do
     end
   end
 
-  # Keeps the choke point the only one: anything that calls a tool directly from
-  # lib/ would skip the check again.
+  # Keeps the choke point the only one: another call to a tool's #execute in
+  # lib/ would skip the approval check and the agent's harness. This lists every
+  # line that calls something's execute, tool or not, and compares exactly, so a
+  # second call in an already listed file fails too. Before adding an entry,
+  # find out what the receiver is. If it can be a tool, don't add it: go through
+  # ToolExecution#call instead. It only reads text, so it can't see a call with
+  # no receiver, method(:execute), __send__ or a name built at run time.
   it 'has one place in lib/ that executes a tool' do
-    direct = Dir[File.join(RCrewAI.root, 'lib/**/*.rb')].flat_map do |file|
-      File.readlines(file).grep(/\btool\.execute|execute_with_validation\(/)
-          .reject { |line| line.strip.start_with?('#', 'def ') }
-          .map { |line| "#{File.basename(file)}: #{line.strip}" }
+    call = /(\.|&\.)(execute|execute_with_validation)\b|\b(public_send|send)\(:?execute/
+    lib = File.join(RCrewAI.root, 'lib')
+    found = Dir[File.join(lib, '**/*.rb')].flat_map do |file|
+      File.readlines(file).grep(call)
+          .map(&:strip)
+          .reject { |line| line.start_with?('#', 'def ') }
+          .map { |line| "#{file.delete_prefix("#{lib}/")}: #{line}" }
     end
 
-    expect(direct.map { |entry| entry.split(':').first }.uniq).to eq(['tool_execution.rb'])
+    expect(found.sort).to eq(ALLOWED_EXECUTE_CALLS.sort)
   end
 end
