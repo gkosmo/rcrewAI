@@ -69,7 +69,10 @@ module RCrewAI
           provide_context_to_agent
 
           # Enable human input for agent if task allows it
-          agent.enable_human_input(require_approval_for_final_answer: @allow_human_guidance) if @human_input_enabled && agent.respond_to?(:enable_human_input)
+          if @human_input_enabled && agent.respond_to?(:enable_human_input)
+            # Only ever turns review on; the agent's own setting stands otherwise.
+            agent.enable_human_input(**(@allow_human_guidance ? { require_approval_for_final_answer: true } : {}))
+          end
 
           @result = run_agent_with_output_processing
 
@@ -94,15 +97,16 @@ module RCrewAI
         @result
       rescue TaskDependencyError => e
         # Don't retry dependency errors - they need dependencies to be completed first
-        @status = :failed
-        @end_time = Time.now
-        @execution_time = @end_time - @start_time if @start_time
+        mark_failed
         @result = "Task dependencies not met: #{e.message}"
         raise e
+      rescue FinalAnswerRejected => e
+        # Not a transient failure, and a retry would run the agent's tools again.
+        mark_failed
+        @result = "Task failed: #{e.message}"
+        raise
       rescue StandardError => e
-        @status = :failed
-        @end_time = Time.now
-        @execution_time = @end_time - @start_time if @start_time
+        mark_failed
 
         # Retry logic with human intervention
         if @retry_count < @max_retries
@@ -204,6 +208,12 @@ module RCrewAI
     end
 
     private
+
+    def mark_failed
+      @status = :failed
+      @end_time = Time.now
+      @execution_time = @end_time - @start_time if @start_time
+    end
 
     # Runs the agent, then applies guardrail validation and schema coercion.
     # Guardrail/schema failures re-run the agent (up to @guardrail_max_retries)
