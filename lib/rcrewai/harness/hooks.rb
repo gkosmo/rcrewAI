@@ -93,6 +93,10 @@ module RCrewAI
         self
       end
 
+      def any?(phase, tool_name)
+        @hooks.any? { |hook| hook.phase == phase && hook.applies?(tool_name) }
+      end
+
       def tool_names(phase)
         @hooks.select { |hook| hook.phase == phase }.flat_map(&:tool_names).uniq
       end

@@ -373,6 +373,84 @@ RSpec.describe 'the result a harness after hook is given' do
     [returned, seen]
   end
 
+  # Counts the calls to its #to_s, the only way the copy reads an object that
+  # isn't a plain Hash, Array or String.
+  let(:counted) do
+    Class.new do
+      attr_reader :reads
+
+      def initialize
+        @reads = 0
+      end
+
+      def to_s
+        @reads += 1
+        'counted'
+      end
+    end.new
+  end
+
+  def run_with(harness, value)
+    agent = Struct.new(:name, :harness).new('a', harness)
+    RCrewAI::ToolExecution.new(agent: agent).call(HarnessReturningTool.new(value), { 'path' => 'a.rb' })
+  end
+
+  it 'is not made when no after hook applies to the tool' do
+    run_with(RCrewAI::Harness.new(default: :allow) { after(:other_tool) { 'never' } }, [counted])
+    run_with(RCrewAI::Harness.new(default: :allow) { before { nil } }, [counted])
+    expect(counted.reads).to eq(0)
+
+    run_with(RCrewAI::Harness.new(default: :allow) { after(:spy_writer) { nil } }, [counted])
+    expect(counted.reads).to eq(1)
+  end
+
+  it 'never freezes a Singleton the tool returned, showing the hook its text' do
+    require 'singleton'
+    settings = stub_const('HarnessSettings', Class.new do
+      include Singleton
+      attr_accessor :level
+
+      def to_s
+        'the settings'
+      end
+    end)
+    returned, seen = seen_by_hook(settings.instance)
+
+    expect(returned).to equal(settings.instance)
+    expect(settings.instance).not_to be_frozen
+    settings.instance.level = 2
+    expect(seen).to eq('the settings')
+    expect(seen).to be_frozen
+  end
+
+  it 'never freezes shared state inside the result, such as a constant' do
+    shared = stub_const('HarnessShared', { 'k' => +'v', 'list' => [+'x'] })
+    returned, seen = seen_by_hook({ 'shared' => shared, 'same' => shared })
+
+    expect(returned['shared']).to equal(shared)
+    expect(shared).not_to be_frozen
+    expect(shared['k']).not_to be_frozen
+    expect(shared['list']).not_to be_frozen
+    expect(seen).to eq('shared' => shared, 'same' => shared)
+    expect(seen['shared']).to be_frozen
+    expect(seen['shared']['list'].first).to be_frozen
+    expect(seen['same']).to equal(seen['shared'])
+  end
+
+  it 'never changes a Module, a String subclass or an Array subclass the tool returned' do
+    mod = Module.new
+    tagged = Class.new(String).new('tagged')
+    list = Class.new(Array).new([+'x'])
+    _, seen = seen_by_hook([mod, tagged, list, :sym, 1, 2.5, nil, true])
+
+    expect(mod).not_to be_frozen
+    expect(tagged).not_to be_frozen
+    expect(list).not_to be_frozen
+    expect(list.first).not_to be_frozen
+    expect(seen.drop(1)).to eq(['tagged', '["x"]', :sym, 1, 2.5, nil, true])
+    expect(seen).to all(be_frozen)
+  end
+
   it 'is a deep frozen copy, even of a structure that contains itself' do
     cyclic = [{ 'k' => +'v' }]
     cyclic << cyclic
@@ -387,7 +465,7 @@ RSpec.describe 'the result a harness after hook is given' do
     expect(seen.last).to equal(seen)
   end
 
-  it 'is the text of a result that cannot be copied' do
+  it 'is the text of a result that is not a plain Hash, Array or String' do
     uncopyable = Struct.new(:callback).new(-> {})
     returned, seen = seen_by_hook(uncopyable)
 
@@ -396,7 +474,7 @@ RSpec.describe 'the result a harness after hook is given' do
     expect(seen).to be_frozen
   end
 
-  it 'names the class of a result that can neither be copied nor turned into text' do
+  it 'names the class of a result that cannot be turned into text' do
     hopeless = stub_const('HopelessResult', Class.new do
       def initialize
         @callback = -> {}

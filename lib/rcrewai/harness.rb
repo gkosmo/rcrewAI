@@ -100,6 +100,11 @@ module RCrewAI
       @hooks.check_before(call)
     end
 
+    # Whether any after hook applies to calls to +tool_name+.
+    def after_hooks?(tool_name)
+      @hooks.any?(:after, tool_name.to_s)
+    end
+
     # Runs the after hooks for +call+ and returns their Hooks::Notes, in
     # declaration order.
     def run_after(call)

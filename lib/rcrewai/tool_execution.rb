@@ -66,18 +66,52 @@ module RCrewAI
       result
     end
 
-    # A deep, frozen copy of +value+, so a hook can't change what history,
-    # memory and events record. Marshal copes with structures that contain
-    # themselves. What can't be copied is shown as its text, or failing that
-    # its class. Never raises.
-    def hook_view(value)
-      return value if Ractor.shareable?(value) # already deeply frozen
+    # Values that can't change, passed to hooks as they are.
+    IMMUTABLE = [NilClass, TrueClass, FalseClass, Integer, Float, Rational, Complex, Symbol].freeze
 
-      Ractor.make_shareable(Marshal.load(Marshal.dump(value)))
+    # A deep, frozen copy of +value+, so a hook can't change what history,
+    # memory and events record. Only plain Hashes, Arrays and Strings (exactly
+    # those classes) are copied, and only the copies are frozen, so nothing the
+    # tool shares with others is touched. Anything else is shown as a copy of
+    # its text. Structures that contain themselves keep their shape. Never
+    # raises.
+    def hook_view(value)
+      copy_for_hook(value, {}.compare_by_identity)
     rescue StandardError, ScriptError, SystemStackError
       text_view(value)
     end
 
+    def copy_for_hook(value, copies)
+      klass = Kernel.instance_method(:class).bind_call(value)
+      return value if IMMUTABLE.include?(klass)
+      return copies[value] if copies.key?(value)
+
+      # Exact classes: a subclass may behave in ways a plain copy wouldn't.
+      if klass == String
+        copies[value] = String.new(value).freeze
+      elsif klass == Array
+        copy_array(value, copies)
+      elsif klass == Hash
+        copy_hash(value, copies)
+      else
+        text_view(value)
+      end
+    end
+
+    def copy_array(array, copies)
+      copy = copies[array] = []
+      array.each { |item| copy << copy_for_hook(item, copies) }
+      copy.freeze
+    end
+
+    def copy_hash(hash, copies)
+      copy = copies[hash] = {}
+      hash.each { |key, item| copy[copy_for_hook(key, copies)] = copy_for_hook(item, copies) }
+      copy.freeze
+    end
+
+    # Only a copy of what to_s returns is kept, so the hook can't reach the
+    # object through it.
     def text_view(value)
       String.new(value.to_s).freeze
     rescue StandardError, ScriptError, SystemStackError
@@ -89,6 +123,9 @@ module RCrewAI
     # Never raises: the tool has run, and an error here would make the call
     # look failed, inviting the model to repeat it. The block builds the Call.
     def after_notes(harness, tool, iteration)
+      # No copy of the result is made for a call no after hook will see.
+      return [] unless harness.after_hooks?(tool.name)
+
       call = yield
       found = harness.run_after(call)
       found.each do |note|
