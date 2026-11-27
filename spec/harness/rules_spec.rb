@@ -2,7 +2,18 @@
 
 require 'spec_helper'
 
+module HarnessRuleWarnings
+  # The warning for a tool whose argument names a matching: rule can't check.
+  def unchecked_warning(tool)
+    "The harness has a matching: rule for '#{tool}', but the tool declares no params and its json_schema " \
+      "lists no arguments (or allows any), so the names in matching: can't be checked: a misspelt one would " \
+      'never match'
+  end
+end
+
 RSpec.describe RCrewAI::Harness do
+  include HarnessRuleWarnings
+
   def outcome(harness, tool, args = {})
     harness.decide(tool, args).outcome
   end
@@ -378,17 +389,26 @@ RSpec.describe RCrewAI::Harness do
       expect { harness.validate_tools([writer, mailer]) }.to raise_error(ArgumentError, /mailer/)
     end
 
-    it 'does not check a tool that declares no params' do
-      harness = described_class.new { block :writer, matching: { file: /x/ } }
+    it 'cannot check a tool that declares no params, and warns once that it cannot' do
+      harness = described_class.new do
+        block :writer, matching: { file: /x/ }
+        ask :writer, matching: { mode: /x/ }
+      end
 
-      expect(harness.validate_tools([tool_class.new])).to eq([])
+      expect(harness.validate_tools([tool_class.new])).to eq([unchecked_warning('writer')])
     end
 
-    it 'does not check a duck-typed tool' do
+    it 'cannot check a duck-typed tool, and warns that it cannot, even when strict' do
       duck = Struct.new(:name).new('writer')
       harness = described_class.new { block :writer, matching: { file: /x/ } }
 
-      expect(harness.validate_tools([duck])).to eq([])
+      expect(harness.validate_tools([duck], strict: true)).to eq([unchecked_warning('writer')])
+    end
+
+    it 'does not warn about a tool with no params that no matching: rule names' do
+      harness = described_class.new { block :writer }
+
+      expect(harness.validate_tools([tool_class.new])).to eq([])
     end
 
     it 'warns once for a tool with no params, however often it is checked' do
@@ -403,12 +423,14 @@ RSpec.describe RCrewAI::Harness do
       adapter = RCrewAI::MCP::ToolAdapter.new(nil, { 'name' => 'send' }, 'srv')
       harness = described_class.new { block :srv__send, matching: { to: /x/ } }
 
-      expect(harness.validate_tools([adapter])).to eq([])
+      expect(harness.validate_tools([adapter])).to eq([unchecked_warning('srv__send')])
     end
   end
 end
 
 RSpec.describe RCrewAI::Harness, '#validate_tools with a tool that lists its arguments only in json_schema' do
+  include HarnessRuleWarnings
+
   let(:harness) { described_class.new { block :srv__send, matching: { adress: /x/ } } }
 
   def adapter(input_schema)
@@ -448,18 +470,19 @@ RSpec.describe RCrewAI::Harness, '#validate_tools with a tool that lists its arg
     end
   end
 
-  it 'does not check when additionalProperties is true, under either kind of key' do
-    expect(harness.validate_tools([adapter(listed.merge('additionalProperties' => true))])).to eq([])
+  it 'does not check when additionalProperties is true, under either kind of key, and warns' do
+    expect(harness.validate_tools([adapter(listed.merge('additionalProperties' => true))]))
+      .to eq([unchecked_warning('srv__send')])
     expect(harness.validate_tools([duck(parameters: { properties: { address: {} }, additionalProperties: true })]))
-      .to eq([])
+      .to eq([unchecked_warning('srv__send')])
   end
 
-  it 'does not check when no arguments are listed' do
+  it 'does not check when no arguments are listed, and warns' do
     [nil, 'schema', {}, { parameters: nil }, { parameters: [] }, { parameters: { type: 'object' } },
      { parameters: { properties: {} } }, { parameters: { properties: ['address'] } }].each do |schema|
-      expect(harness.validate_tools([duck(schema)])).to eq([])
+      expect(harness.validate_tools([duck(schema)])).to eq([unchecked_warning('srv__send')])
     end
-    expect(harness.validate_tools([adapter(nil)])).to eq([])
+    expect(harness.validate_tools([adapter(nil)])).to eq([unchecked_warning('srv__send')])
   end
 
   it 'prefers declared params to the schema' do
@@ -501,7 +524,8 @@ RSpec.describe RCrewAI::Harness, '#validate_tools with a tool that lists its arg
           before(:srv__send) { true }
         end
 
-        expect(harness.validate_tools([broken, Struct.new(:name).new('other')], strict: true)).to eq([])
+        expect(harness.validate_tools([broken, Struct.new(:name).new('other')], strict: true))
+          .to eq([unchecked_warning('other')])
       end
     end
   end

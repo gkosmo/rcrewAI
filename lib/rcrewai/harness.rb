@@ -44,8 +44,11 @@ module RCrewAI
 
     def initialize(default: :ask, hook_timeout: 60, &definition)
       raise ArgumentError, "default: must be :allow, :ask or :block, got #{default.inspect}" unless OUTCOMES.include?(default)
-      # Without a limit a hook that hangs would hang the run.
-      raise ArgumentError, "hook_timeout: must be a positive number of seconds, got #{hook_timeout.inspect}" unless hook_timeout.is_a?(Numeric) && hook_timeout.real? && hook_timeout.positive?
+      # Without a limit a hook that hangs would hang the run, and Thread#join
+      # takes infinity as no limit.
+      unless hook_timeout.is_a?(Numeric) && hook_timeout.real? && hook_timeout.positive? && hook_timeout.finite?
+        raise ArgumentError, "hook_timeout: must be a positive, finite number of seconds, got #{hook_timeout.inspect}"
+      end
 
       @default = default
       @hook_timeout = hook_timeout
@@ -90,7 +93,8 @@ module RCrewAI
     # values are ignored. A hook that raises or times out can't undo the call:
     # the result stands and the model is told the hook failed. Before and
     # after hooks on one harness run one at a time, and a hook can't make tool
-    # calls through its own harness (they're refused).
+    # calls through its own harness, or through one whose hook led to it
+    # (they're refused).
     def after(*tools, &hook)
       @hooks.add(:after, tools, hook)
       self
@@ -131,7 +135,7 @@ module RCrewAI
     # when +matching:+ names an argument a tool doesn't declare, since that
     # rule could never match. A tool's arguments are its declared params or,
     # with none, the properties of its json_schema (see #schema_arguments); a
-    # tool that lists neither isn't checked.
+    # tool that lists neither isn't checked, and gets a warning saying so.
     #
     # A json_schema that raises is only a warning, unless +strict+ is set, as
     # it is for a call: then it raises ArgumentError too. It's only read for
@@ -192,7 +196,8 @@ module RCrewAI
     end
 
     # Raises ArgumentError for an argument that +rule+ matches on and a tool
-    # doesn't have. Returns the warnings for schemas that couldn't be read.
+    # doesn't have. Returns the warnings for schemas that couldn't be read and
+    # for tools whose argument names can't be checked.
     def check_arguments(rule, by_name, strict)
       return [] if rule.matched_arguments.empty?
 
@@ -212,13 +217,21 @@ module RCrewAI
 
         return "#{problem}. Its calls are blocked while that is so."
       end
-      return nil if known.empty?
+      return unchecked_warning(name) if known.empty?
 
       unknown = rule.matched_arguments - known
       return nil if unknown.empty?
 
       raise ArgumentError, "matching: names '#{unknown.join("', '")}', which the tool '#{name}' doesn't " \
                            "declare (it declares: #{known.join(', ')})"
+    end
+
+    # A warning, not an error: such a tool may take any argument, so the rule
+    # may well be right.
+    def unchecked_warning(name)
+      "The harness has a matching: rule for '#{name}', but the tool declares no params and its json_schema " \
+        "lists no arguments (or allows any), so the names in matching: can't be checked: a misspelt one would " \
+        'never match'
     end
 
     def declared_params(tool)

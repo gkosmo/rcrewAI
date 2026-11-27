@@ -64,7 +64,7 @@ RCrewAI::Harness.new(default: :ask, hook_timeout: 60) { ... }
   or `:block`. With `:ask`, every unlisted tool asks, including MCP tools and
   tools added later.
 - `hook_timeout:` is the number of seconds each hook may run. It must be
-  positive.
+  positive and finite.
 
 `allow`, `ask`, `block`, `before` and `after` can be written inside the block or
 called on the harness.
@@ -80,6 +80,13 @@ block :file_writer, matching: { file_path: /\.env\z/ }, reason: 'Secrets are rea
 Each rule names at least one tool. Names are compared with the tool instance's
 `name`, even when `use_tool` or the legacy runner found the tool by its class
 name. An MCP tool's name is `server__tool`.
+
+**A subclass of a tool class inherits neither its `tool_name` nor its
+`param`s.** Its name comes from its own class name (`class SafeWriter <
+FileWriter` is `safe_writer`), so rules and hooks for the parent's name don't
+apply to it, and with no `param`s of its own, the names in its `matching:` rules
+[aren't checked](#checking-the-argument-names). Declare `tool_name` and the
+`param`s in the subclass too.
 
 A rule applies when it names the tool, every `matching:` entry matches, and the
 `if:` condition, if there is one, returns a truthy value.
@@ -141,8 +148,9 @@ are checked.
 
 **Names aren't checked for a tool that lists nothing:** no `json_schema`, no
 `properties` or empty ones, or `additionalProperties: true` (what an MCP tool
-without an `inputSchema` gets). There a misspelt name means the rule silently
-never applies, so a `block` rule lets the call through.
+without an `inputSchema` gets). There a misspelt name means the rule never
+applies, so a `block` rule lets the call through. Building the agent logs a
+warning for each such tool a `matching:` rule names.
 
 If reading a tool's `json_schema` raises, the agent is still built, with a
 warning, and calls to that tool are blocked for as long as it raises, if any
@@ -261,10 +269,14 @@ returns the result (or raises) as usual and logs the notes.
   delays the others. Time spent waiting for a turn doesn't count against
   `hook_timeout`.
 - **A tool call made from inside a hook, through an agent using the same
-  harness, is refused.** Threads a hook spawns aren't detected. Their calls
-  aren't refused for this reason: a call that needs a hook waits for the one
-  that spawned it, so waiting for it there stalls until the timeout, and it can
-  still run afterwards. Don't make tool calls from threads started by a hook.
+  harness, is refused.** So is one made through a harness whose hook led to
+  this one (a hook on A runs an agent on B, whose hook calls a tool through A).
+  This holds on the threads the library starts for that work too: parallel tool
+  calls, a consensual process, an `AsyncExecutor` and the approval handler.
+  Threads your hook starts itself aren't detected. Their calls aren't refused
+  for this reason: a call that needs a hook waits for the one that spawned it,
+  so waiting for it there stalls until the timeout, and it can still run
+  afterwards. Don't make tool calls from threads your hook starts.
 - A hook that times out is killed with `Thread#kill`, then given up to another
   `hook_timeout` seconds to finish its `ensure` blocks. **If it still hasn't
   stopped, every call that a `before` hook applies to is refused, on every agent

@@ -133,6 +133,25 @@ RSpec.describe 'harness enforcement' do
         expect(asked).to be_empty
         expect(sent_to_model(llm)).to include('unknown param: mode')
       end
+
+      # The model sends "5", which the allow rule would match, but the tool gets
+      # 5, a number the rule can't check, so the rule doesn't apply.
+      it 'judges a rule on the coerced value, not on what the model sent' do
+        counter = Class.new(RCrewAI::Tools::Base) do
+          tool_name 'spy_writer'
+          param :path, type: :string, required: true
+          param :count, type: :integer
+
+          def execute(**) = 'counted'
+        end.new
+        harness = RCrewAI::Harness.new(default: :block) { allow :spy_writer, matching: { count: /\A\d+\z/ } }
+        llm = llm_for(turn('path' => 'notes.txt', 'count' => '5'))
+        events = []
+        build_agent(llm, tools: [counter], harness: harness).execute_task(task, stream: ->(e) { events << e })
+
+        expect(sent_to_model(llm)).to include("REFUSED: Tool 'spy_writer' was not run: No rule allows this tool")
+        expect(events.grep(RCrewAI::Events::ToolBlocked).map(&:args)).to eq([{ 'path' => 'notes.txt', 'count' => 5 }])
+      end
     end
   end
 

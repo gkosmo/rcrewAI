@@ -142,7 +142,9 @@ For rules per tool, give an agent a harness. It can allow, ask about or block ea
 ```ruby
 harness = RCrewAI::Harness.new(default: :ask) do
   allow :file_reader, :file_writer
-  block :file_writer, matching: { file_path: /\.env\z/ }, reason: 'Secrets are read-only.'
+  # .env, .env.local, config/.ENV and the like, in any case
+  block :file_writer, matching: { file_path: %r{(\A|/)\.env(\.|\z)}i },
+                      reason: '.env files hold secrets and are read-only.'
 end
 
 RCrewAI::Agent.new(name: 'dev', role: 'Developer', goal: 'Tidy up',

@@ -427,10 +427,14 @@ module RCrewAI
     end
 
     # On its own thread so that a timeout stops a handler that never returns.
+    # It carries the mark of a hook the call is made from (see
+    # Harness::Hooks::RUNNING), so the handler's tool calls back through that
+    # hook's harness are refused at once.
     def ask_handler(handler, request, timeout)
+      running = Harness::Hooks.running
       thread = Thread.new do
         Thread.current.report_on_exception = false
-        ToolApproval.decision_from(handler.call(request))
+        Harness::Hooks.carrying(running) { ToolApproval.decision_from(handler.call(request)) }
       rescue StandardError, ScriptError => e
         @logger.warn "Approval handler failed: #{e.class}: #{e.message}"
         ToolApproval.refuse("The approval handler failed (#{e.class})")

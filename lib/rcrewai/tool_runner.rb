@@ -91,11 +91,15 @@ module RCrewAI
       return tool_calls.map { |tc| execute_tool_call(tc, iter) } unless parallel?(tool_calls)
 
       # Events are emitted from worker threads, so carry the run span across
-      # the boundary: Events.with_parent is thread-local by design.
+      # the boundary: Events.with_parent is thread-local by design. So is the
+      # mark of a hook this run is inside, which refuses tool calls back
+      # through its harness.
       span = Events.current_parent
+      running = Harness::Hooks.running
       tool_calls.each_slice(@max_tool_concurrency).flat_map do |slice|
-        slice.map { |tc| Thread.new { Events.with_parent(span) { execute_tool_call(tc, iter) } } }
-             .map(&:value)
+        slice.map do |tc|
+          Thread.new { Harness::Hooks.carrying(running) { Events.with_parent(span) { execute_tool_call(tc, iter) } } }
+        end.map(&:value)
       end
     end
 

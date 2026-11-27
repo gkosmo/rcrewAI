@@ -16,8 +16,9 @@ module RCrewAI
     ToolCallStart   = Struct.new(*BASE_ATTRS, :tool, :args, :call_id,                 keyword_init: true)
     ToolCallResult  = Struct.new(*BASE_ATTRS, :tool, :call_id, :result, :duration_ms, keyword_init: true)
     ToolCallError   = Struct.new(*BASE_ATTRS, :tool, :call_id, :error,                keyword_init: true)
-    # Only agents with require_approval_for_tools emit these. A refused call is
-    # ToolCallStart, Requested, Decided, then ToolCallError: it never gets a result.
+    # Only agents with require_approval_for_tools, or a harness whose outcome
+    # for the call is ask, emit these. A refused call is ToolCallStart,
+    # Requested, Decided, then ToolCallError: it never gets a result.
     ToolApprovalRequested = Struct.new(*BASE_ATTRS, :tool, :args, :call_id, keyword_init: true)
     ToolApprovalDecided   = Struct.new(*BASE_ATTRS, :tool, :args, :call_id, :approved, :reason, keyword_init: true)
     # Only agents with a harness emit this, for a call it stopped before it ran.

@@ -36,10 +36,30 @@ module RCrewAI
 
       PASS = Object.new.freeze
       NO_NOTE = Object.new.freeze
-      # Marks the threads hooks run on, so a hook that makes a tool call on its
-      # own harness is refused at once instead of waiting for the lock its
-      # caller holds. A thread variable, so a Fiber inside the hook carries it.
+      # Marks the threads hooks run on with the harnesses whose hooks are
+      # running there, so a hook that makes a tool call through any of them
+      # (its own, or one whose hook led to it) is refused at once instead of
+      # waiting for the lock its caller holds. A thread variable, so a Fiber
+      # inside the hook carries it. Threads the library starts carry it too:
+      # see Hooks.running and Hooks.carrying.
       RUNNING = :rcrewai_harness_hooks
+
+      # This thread's mark, for a thread the library starts to pass on with
+      # Hooks.carrying.
+      def self.running
+        Thread.current.thread_variable_get(RUNNING)
+      end
+
+      # Runs the block with +running+ (Hooks.running on the thread that started
+      # this one) as this thread's mark, then restores the mark it had, since a
+      # pooled thread outlives the block.
+      def self.carrying(running)
+        previous = Thread.current.thread_variable_get(RUNNING)
+        Thread.current.thread_variable_set(RUNNING, running)
+        yield
+      ensure
+        Thread.current.thread_variable_set(RUNNING, previous)
+      end
 
       # Joins +pieces+, then the +notes+ on lines of their own, into the text
       # the model reads after a tool call. Never raises: a tool call that ran
@@ -149,7 +169,7 @@ module RCrewAI
       end
 
       def reentered?
-        Thread.current.thread_variable_get(RUNNING).equal?(self)
+        (Hooks.running || []).any? { |hooks| hooks.equal?(self) }
       end
 
       def reentry_refusal
@@ -173,7 +193,8 @@ module RCrewAI
       end
 
       def run_before(hook, call)
-        thread = Thread.new { verdict(hook, call) }
+        running = Hooks.running
+        thread = Thread.new { verdict(hook, call, running) }
         outcome = thread.join(@timeout) ? thread.value : timed_out(hook)
         return nil if PASS.equal?(outcome)
         return outcome if outcome.is_a?(Refusal)
@@ -188,7 +209,8 @@ module RCrewAI
 
       # Returns a Note, or nil when the hook has nothing to add.
       def run_after_hook(hook, call)
-        thread = Thread.new { note_from(hook, call) }
+        running = Hooks.running
+        thread = Thread.new { note_from(hook, call, running) }
         outcome = thread.join(@timeout) ? thread.value : failed_note(hook, 'timed out', "timed out after #{@timeout} seconds")
         return nil if NO_NOTE.equal?(outcome)
         return outcome if outcome.is_a?(Note)
@@ -219,8 +241,8 @@ module RCrewAI
       # Runs on the hook's thread. Everything that touches what the hook
       # returned or raised happens here, under the timeout.
       # rubocop:disable Lint/RescueException
-      def verdict(hook, call)
-        mark_thread
+      def verdict(hook, call, running)
+        mark_thread(running)
         judge(hook, hook.body.call(call))
       rescue Exception => e # exit, a stack overflow and the rest must refuse too
         raised(hook, e)
@@ -228,8 +250,8 @@ module RCrewAI
 
       # The after hook's counterpart of #verdict: a non-empty String is a note,
       # any other value adds nothing, and whatever it raises is reported.
-      def note_from(hook, call)
-        mark_thread
+      def note_from(hook, call, running)
+        mark_thread(running)
         value = hook.body.call(call)
         return NO_NOTE unless String === value # rubocop:disable Style/CaseEquality
 
@@ -247,9 +269,11 @@ module RCrewAI
       end
       # rubocop:enable Lint/RescueException
 
-      def mark_thread
+      # +running+ is the mark of the thread that started the hook's, when that
+      # thread was itself running hooks, of this harness or another.
+      def mark_thread(running)
         Thread.current.report_on_exception = false
-        Thread.current.thread_variable_set(RUNNING, self)
+        Thread.current.thread_variable_set(RUNNING, [*running, self].freeze)
       end
 
       def judge(hook, value)

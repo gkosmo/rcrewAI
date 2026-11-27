@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `RCrewAI::Harness` and `harness:` on `Agent`: allow, ask about or block each tool call by tool name and arguments (`matching:`, `if:`), and run `before` and `after` hooks. `before` hooks fail closed. Unlisted tools ask by default. It isn't a sandbox. See `docs/api/harness.md`, including its limits. For agents with a harness, every tool path coerces arguments and rejects undeclared ones (for tools that use the base `execute_with_validation`; a tool that declares no `param`s has nothing coerced or rejected), and nested keys in object arguments reach the tool as strings. Other agents don't use any of this.
-- A `matching:` rule naming an argument a tool doesn't have raises `ArgumentError` when the agent is built, and blocks calls to tools added later. The names come from the tool's declared `param`s or, with none (MCP tools), from the `properties` in its `json_schema` unless `additionalProperties` is `true`. Values aren't checked, and neither are names for a tool that lists nothing.
+- A `matching:` rule naming an argument a tool doesn't have raises `ArgumentError` when the agent is built, and blocks calls to tools added later. The names come from the tool's declared `param`s or, with none (MCP tools), from the `properties` in its `json_schema` unless `additionalProperties` is `true`. Values aren't checked, and neither are names for a tool that lists nothing; that is logged as a warning when the agent is built.
 - New events `Events::ToolBlocked` (a rule or hook stopped a call) and `Events::ToolHookFailed` (a harness hook failed). Only agents with a harness emit them.
 - `Tools::Base#prepare_arguments`, which coerces arguments without running the tool.
 
@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Context trimming broke tool runs.** With `respect_context_window`, the oldest messages went first: the task itself, then tool calls without their results or results without their calls. The task and the latest turn are now kept, and a tool call is dropped together with its results. The size estimate now counts tool call arguments.
 - The legacy runner ended after the first tool turn when a provider reported `finish_reason: :stop`, so the model never saw the result. A turn that uses a tool no longer ends the run, even with a `FINAL_ANSWER[...]` in it. A short plain answer on a later turn was returned as an empty string.
 - `AsyncExecutor#wait_for_completion` reported failed and timed-out tasks as completed.
-- With or without a harness, the legacy runner no longer fails a task when the text of one turn's tool calls is in encodings that can't be joined, such as UTF-8 and binary. It converts the text to UTF-8, replacing invalid bytes.
+- With or without a harness, a task no longer fails when the text the model reads after a tool call is in encodings that can't be joined: on the legacy runner, the text of one turn's tool calls (such as UTF-8 and binary), and on the native runner, the `ERROR:` and `REFUSED:` text for a tool whose error or refusal message is in an encoding such as UTF-16LE. The text is converted to UTF-8, replacing invalid bytes.
 - **Behavior change, with or without a harness:** retrying a failed tool in `Agent#use_tool` (with human input) now retries the same tool object. It used to look the tool up again by the name you passed, so a tool found by its class name raised `NoMethodError`, or a different tool with that name could run.
 
 ## [0.12.0] - 2026-11-05

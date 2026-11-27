@@ -67,24 +67,25 @@ RSpec.describe 'harness before hooks' do
                                                                tool: 'spy_writer'))
         expect(events.grep(RCrewAI::Events::ToolHookFailed)).to be_empty
       end
-    end
 
-    { false => 'FalseClass', ok: 'Symbol' }.each do |value, class_name|
-      it "refuses, naming the hook and what it returned, when it returns #{value.inspect}" do
-        sent = run_calls(allowing { before(:spy_writer) { value } }, { 'path' => 'a.txt' })
+      { false => 'FalseClass', ok: 'Symbol' }.each do |value, class_name|
+        it "refuses, naming the hook and what it returned, when it returns #{value.inspect} on the #{runner} runner" do
+          sent = run_calls(allowing { before(:spy_writer) { value } }, { 'path' => 'a.txt' }, native: native)
+
+          expect(spy.calls).to be_empty
+          expect(refused(sent)).to include('before(spy_writer) #1', 'returned', class_name)
+        end
+      end
+
+      # Review focus 4: a logging hook whose last expression is `seen << call`.
+      it "refuses, naming the hook and what it returned, when it returns an Array on the #{runner} runner" do
+        seen = []
+        sent = run_calls(allowing { before(:spy_writer) { |call| seen << call } }, { 'path' => 'a.txt' },
+                         native: native)
 
         expect(spy.calls).to be_empty
-        expect(refused(sent)).to include('before(spy_writer) #1', 'returned', class_name)
+        expect(refused(sent)).to include('before(spy_writer) #1', 'returned', 'Array')
       end
-    end
-
-    # Review focus 4: a logging hook whose last expression is `seen << call`.
-    it 'refuses, naming the hook and what it returned, when it returns an Array' do
-      seen = []
-      sent = run_calls(allowing { before(:spy_writer) { |call| seen << call } }, { 'path' => 'a.txt' })
-
-      expect(spy.calls).to be_empty
-      expect(refused(sent)).to include('before(spy_writer) #1', 'returned', 'Array')
     end
 
     it 'refuses when the hook returns an object that claims to be nil or true' do
@@ -112,25 +113,30 @@ RSpec.describe 'harness before hooks' do
   end
 
   describe 'failures' do
-    it 'refuses when the hook raises, naming the hook and the error class' do
-      sent = run_calls(allowing { before(:spy_writer) { raise 'secret detail' } }, { 'path' => 'a.txt' })
+    # The legacy runner has no call ids.
+    { 'native' => ['call_0', true], 'legacy' => [nil, false] }.each do |runner, (call_id, native)|
+      it "refuses when the hook raises, naming the hook and the error class, on the #{runner} runner" do
+        sent = run_calls(allowing { before(:spy_writer) { raise 'secret detail' } }, { 'path' => 'a.txt' },
+                         native: native)
 
-      expect(spy.calls).to be_empty
-      expect(refused(sent)).to include('before(spy_writer) #1', 'RuntimeError')
-      failed = events.grep(RCrewAI::Events::ToolHookFailed)
-      expect(failed.length).to eq(1)
-      expect(failed.first.to_h).to include(type: :tool_hook_failed, tool: 'spy_writer', call_id: 'call_0',
-                                           hook: 'before(spy_writer) #1', phase: :before)
-      expect(failed.first.error).to include('RuntimeError', 'secret detail')
-      expect(events.grep(RCrewAI::Events::ToolBlocked).map(&:source)).to eq([:hook])
-    end
+        expect(spy.calls).to be_empty
+        expect(refused(sent)).to include('before(spy_writer) #1', 'RuntimeError')
+        failed = events.grep(RCrewAI::Events::ToolHookFailed)
+        expect(failed.length).to eq(1)
+        expect(failed.first.to_h).to include(type: :tool_hook_failed, tool: 'spy_writer', call_id: call_id,
+                                             hook: 'before(spy_writer) #1', phase: :before)
+        expect(failed.first.error).to include('RuntimeError', 'secret detail')
+        expect(events.grep(RCrewAI::Events::ToolBlocked).map(&:source)).to eq([:hook])
+      end
 
-    it 'refuses when the hook hangs past hook_timeout' do
-      sent = run_calls(allowing(hook_timeout: 0.05) { before(:spy_writer) { sleep } }, { 'path' => 'a.txt' })
+      it "refuses when the hook hangs past hook_timeout on the #{runner} runner" do
+        sent = run_calls(allowing(hook_timeout: 0.05) { before(:spy_writer) { sleep } }, { 'path' => 'a.txt' },
+                         native: native)
 
-      expect(spy.calls).to be_empty
-      expect(refused(sent)).to include('before(spy_writer) #1', 'timed out')
-      expect(events.grep(RCrewAI::Events::ToolHookFailed).map(&:phase)).to eq([:before])
+        expect(spy.calls).to be_empty
+        expect(refused(sent)).to include('before(spy_writer) #1', 'timed out')
+        expect(events.grep(RCrewAI::Events::ToolHookFailed).map(&:phase)).to eq([:before])
+      end
     end
 
     it 'refuses when the hook raises something that is not a StandardError' do
@@ -206,6 +212,35 @@ RSpec.describe 'harness before hooks' do
       expect(other.calls).to be_empty
       expect(inner).to be_a(RCrewAI::Harness::Blocked)
       expect(inner.message).to include("can't make tool calls")
+      expect(spy.calls).to eq([{ path: 'a.txt' }])
+    end
+
+    it 'refuses a tool call that comes back through the harness after passing through another one' do
+      other = HarnessSpyTool.new
+      inner = nil
+      first = allowing(hook_timeout: 10)
+      second = allowing(hook_timeout: 10) do
+        before(:spy_writer) do
+          inner = RCrewAI::ToolExecution.new(agent: Struct.new(:name, :harness).new('a', first))
+                                        .call(other, { 'path' => 'x' })
+          true
+        rescue RCrewAI::ToolApproval::Refused => e
+          inner = e
+          true
+        end
+      end
+      first.before(:spy_writer) do
+        RCrewAI::ToolExecution.new(agent: Struct.new(:name, :harness).new('b', second))
+                              .call(HarnessSpyTool.new, { 'path' => 'y' })
+        true
+      end
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      run_calls(first, { 'path' => 'a.txt' })
+
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+      expect(inner).to be_a(RCrewAI::Harness::Blocked)
+      expect(inner.message).to include("can't make tool calls")
+      expect(other.calls).to be_empty
       expect(spy.calls).to eq([{ path: 'a.txt' }])
     end
   end
@@ -319,6 +354,13 @@ RSpec.describe 'harness before hooks' do
 
     it 'rejects a hook_timeout that is not a positive number' do
       [nil, 0, -1, '5'].each do |timeout|
+        expect { RCrewAI::Harness.new(hook_timeout: timeout) }.to raise_error(ArgumentError, /hook_timeout/)
+      end
+    end
+
+    # Thread#join treats infinity as no limit at all, so a hang would hang the run.
+    it 'rejects a hook_timeout that is not finite' do
+      [Float::INFINITY, -Float::INFINITY, Float::NAN].each do |timeout|
         expect { RCrewAI::Harness.new(hook_timeout: timeout) }.to raise_error(ArgumentError, /hook_timeout/)
       end
     end

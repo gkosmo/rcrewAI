@@ -496,8 +496,9 @@ module RCrewAI
       # Runs the block over items in bounded parallel, preserving input order.
       def bounded_parallel(items)
         span = Events.current_parent
+        running = Harness::Hooks.running # see Harness::Hooks::RUNNING
         items.each_slice(max_concurrency).flat_map do |slice|
-          slice.map { |item| Thread.new { Events.with_parent(span) { yield(*item) } } }
+          slice.map { |item| Thread.new { Harness::Hooks.carrying(running) { Events.with_parent(span) { yield(*item) } } } }
                .map(&:value)
         end
       end
