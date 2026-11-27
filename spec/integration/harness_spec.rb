@@ -278,6 +278,48 @@ RSpec.describe 'harness enforcement' do
     end
   end
 
+  describe 'a tool added after the agent was built' do
+    let(:bad_harness) { RCrewAI::Harness.new(default: :allow) { block :spy_writer, matching: { file_path: /\.env/ } } }
+    let(:llm) { HarnessLLM.new(native: true, turns: [native_turn({ 'path' => '.env' })]) }
+
+    def expect_blocked_for_bad_rule(events)
+      expect(spy.calls).to be_empty
+      expect(sent_to_model(llm)).to match(/REFUSED: Tool 'spy_writer' was not run: .*file_path/)
+      expect(events.grep(RCrewAI::Events::ToolBlocked).map { |e| [e.tool, e.source] }).to eq([['spy_writer', :rule]])
+    end
+
+    it 'is blocked when a rule for it can never be checked, after agent.tools <<' do
+      events = []
+      agent = build_agent(llm, tools: [], harness: bad_harness)
+      agent.tools << spy
+      agent.execute_task(task, stream: ->(e) { events << e })
+
+      expect_blocked_for_bad_rule(events)
+    end
+
+    it 'is blocked when a rule for it can never be checked, as a task tool' do
+      events = []
+      agent = build_agent(llm, tools: [], harness: bad_harness)
+      task_with_tool = RCrewAI::Task.new(name: 't', description: 'do it', expected_output: 'x', agent: agent,
+                                         tools: [spy])
+      allow(agent).to receive(:execute_task).and_wrap_original do |original, t, **opts|
+        original.call(t, **opts, stream: ->(e) { events << e })
+      end
+      task_with_tool.execute
+
+      expect_blocked_for_bad_rule(events)
+    end
+
+    it 'does not log warnings about rules for other tools on each call' do
+      harness = RCrewAI::Harness.new(default: :allow) { block :other_tool }
+      agent = build_agent(llm, tools: [], harness: harness)
+      agent.tools << spy
+
+      expect { agent.execute_task(task) }.not_to output(/other_tool/).to_stdout
+      expect(spy.calls).to eq([{ path: '.env' }])
+    end
+  end
+
   describe 'building an agent' do
     it 'rejects a matching: argument the tool does not declare' do
       harness = RCrewAI::Harness.new { block :spy_writer, matching: { file_path: /x/ } }

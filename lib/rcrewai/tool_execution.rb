@@ -60,8 +60,17 @@ module RCrewAI
         Object.instance_method(:method).bind_call(tool, :execute_with_validation).owner == Tools::Base
     end
 
-    # Anything that goes wrong while checking is a block.
+    # Anything that goes wrong while checking is a block. The tool is validated
+    # on every call because tools can be added after the agent was built (task
+    # tools are): a matching: rule naming an argument it doesn't declare could
+    # never apply, so a block rule would fail open. Its warnings, about rules
+    # for other tools, are ignored here; the agent logs them once.
     def decide(harness, tool, checked)
+      begin
+        harness.validate_tools([tool])
+      rescue ArgumentError => e
+        return [:block, "The harness can't check this tool: #{e.message}"]
+      end
       decision = harness.decide(tool.name, checked)
       [decision.outcome, decision.reason || 'Blocked by the harness']
     rescue StandardError, ScriptError, SystemStackError => e
