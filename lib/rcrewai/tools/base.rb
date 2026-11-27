@@ -26,15 +26,20 @@ module RCrewAI
       end
 
       def execute_with_validation(args_hash)
-        coerced = {}
+        execute(**prepare_arguments(args_hash))
+      end
+
+      # Coerces +args_hash+ to the declared params and returns the keyword
+      # arguments for #execute, without running the tool. Undeclared arguments are
+      # dropped, or raise ToolError with +reject_undeclared+. A tool that declares
+      # no params gets everything passed through.
+      def prepare_arguments(args_hash, reject_undeclared: false)
         schema_params = self.class.params
+        return args_hash.transform_keys(&:to_sym) if schema_params.empty?
 
-        if schema_params.empty?
-          coerced = args_hash.transform_keys(&:to_sym)
-          return execute(**coerced)
-        end
+        reject_undeclared!(args_hash, schema_params) if reject_undeclared
 
-        schema_params.each do |p|
+        schema_params.each_with_object({}) do |p, coerced|
           key_str = p[:name].to_s
           key_sym = p[:name].to_sym
           if args_hash.key?(key_str)
@@ -48,8 +53,6 @@ module RCrewAI
           end
           coerced[key_sym] = coerce(raw, p[:type], p[:name])
         end
-
-        execute(**coerced)
       end
 
       def execute(**params)
@@ -111,6 +114,11 @@ module RCrewAI
       end
 
       private
+
+      def reject_undeclared!(args_hash, schema_params)
+        unknown = args_hash.keys.map(&:to_s) - schema_params.map { |p| p[:name].to_s }
+        raise ToolError, "unknown param: #{unknown.first}" unless unknown.empty?
+      end
 
       def coerce(value, type, name)
         case type
