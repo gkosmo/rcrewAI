@@ -562,3 +562,57 @@ RSpec.describe 'a harness after hook while a timed-out hook keeps running' do
     expect(overlapped).to be(false)
   end
 end
+
+# At its iteration limit the legacy runner can make the last turn's tool output
+# the final answer. The notes were only ever meant for the model.
+RSpec.describe 'a legacy run that ends at max_iterations on tool output' do
+  let(:task) { RCrewAI::Task.new(name: 't', description: 'do it', expected_output: 'x') }
+  let(:noting) { RCrewAI::Harness.new(default: :allow) { after { 'NOTE-FROM-HOOK' } } }
+  let(:tool) do
+    Class.new(RCrewAI::Tools::Base) do
+      tool_name 'deep'
+      description 'returns or fails'
+
+      def execute(**args)
+        raise RCrewAI::Tools::ToolError, 'BROKE' if args[:f]
+
+        'RESULT'
+      end
+    end.new
+  end
+
+  # +content+ has to be short, or the runner takes the answer from it instead.
+  def run_to_limit(content, **options)
+    llm = HarnessLLM.new(native: false,
+                         turns: [{ content: content, tool_calls: [], finish_reason: :length, usage: {} }])
+    agent = RCrewAI::Agent.new(name: 'a', role: 'r', goal: 'g', tools: [tool], llm: llm, **options)
+    [agent, agent.execute_task(task, max_iterations: 1)]
+  end
+
+  it 'answers with the result and without the note, and records no note' do
+    agent, result = run_to_limit('USE_TOOL[deep]()', harness: noting)
+
+    expect(result[:finish_reason]).to eq(:max_iterations)
+    expect(result[:content]).to eq('Tool deep result: RESULT')
+    expect(task.result).to eq('Tool deep result: RESULT')
+    expect(agent.memory.relevant_executions(task).to_s).not_to include('NOTE-FROM-HOOK')
+  end
+
+  it 'leaves the note out of a failed call too' do
+    _, result = run_to_limit('USE_TOOL[deep](f=1)', harness: noting)
+
+    expect(result[:content]).to eq('Tool deep failed: BROKE')
+  end
+
+  it 'leaves out the notes of every call in the turn' do
+    _, result = run_to_limit("USE_TOOL[deep]()\nUSE_TOOL[deep]()\nok\nok\nok", harness: noting)
+
+    expect(result[:content]).to eq("Tool deep result: RESULT\nTool deep result: RESULT")
+  end
+
+  it 'gives the same answer as without a harness' do
+    _, result = run_to_limit('USE_TOOL[deep]()')
+
+    expect(result[:content]).to eq('Tool deep result: RESULT')
+  end
+end

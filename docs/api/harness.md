@@ -100,6 +100,19 @@ anchor it. A rule doesn't apply when the argument is missing. That includes an
 optional argument the caller left out: a `param`'s `default:` isn't filled in,
 so rules don't see it.
 
+The table is about **the value the rules see**. For a [prepared](#the-order-of-one-call)
+tool that is the value after coercion, not what the caller sent:
+
+- A `:string` or `:enum` param is converted with `to_s` first, so it is always a
+  String. An explicit `nil` becomes `""`: `block ..., matching: { mode: /w/ }`
+  doesn't apply to `mode: nil`, and the tool gets `""`. A number, boolean, hash
+  or array becomes its text and is matched as text, so `['.env']` becomes
+  `[".env"]`, which `/\.env\z/` doesn't match.
+- `:integer` and `:number` params become numbers and `:boolean` params become
+  `true` or `false` (`nil` becomes `false`), so they fall in the last row.
+- `:array` and `:object` params, and the arguments of tools that aren't
+  prepared or declare no `param`s, are seen as supplied.
+
 | Argument value | `block` and `ask` rules | `allow` rules |
 |---|---|---|
 | String | apply if it matches | apply if it matches |
@@ -108,13 +121,30 @@ so rules don't see it.
 
 The last row is a value that can't be checked, so doubt never loosens anything.
 
-When the agent is built, a `matching:` name that a tool doesn't declare raises
+#### Checking the argument names
+
+When the agent is built, a `matching:` name that a tool doesn't have raises
 `ArgumentError`, since that rule could never apply. A tool added after the agent
 was built (task tools are) is checked on each call, and its call is blocked if a
-rule for it names an argument it doesn't declare. Both checks need declared
-`param`s. For a tool with none, including every MCP tool, `matching:` names
-aren't validated against any schema, so a misspelt name means the rule silently
-never applies.
+rule for it names an argument it doesn't have.
+
+A tool's arguments are its declared `param`s. For a tool with no declared
+`param`s, such as an MCP tool, they are the keys of `properties` under
+`parameters` in its `json_schema` (for MCP, the server's `inputSchema`). The
+schema is treated as the complete list unless `additionalProperties` is `true`,
+even where JSON Schema would allow other names. Only top-level names are read,
+not those under `anyOf`, `oneOf`, `allOf` or `patternProperties`, and no values
+are checked.
+
+**Names aren't checked for a tool that lists nothing:** no `json_schema`, no
+`properties` or empty ones, or `additionalProperties: true` (what an MCP tool
+without an `inputSchema` gets). There a misspelt name means the rule silently
+never applies, so a `block` rule lets the call through.
+
+If reading a tool's `json_schema` raises, the agent is still built, with a
+warning, and calls to that tool are blocked for as long as it raises, if any
+`matching:` rule names the tool. (A task run also reads every tool's schema to
+pick a runner, so a schema that raises then fails the run, harness or not.)
 
 A rule or hook naming a tool the agent doesn't have is logged as a warning when
 the agent is built.
@@ -128,11 +158,13 @@ tool calls they must be thread-safe and quick.
 
 ## The order of one call
 
-1. **Prepare the arguments, once.** For a tool that uses the base
-   `execute_with_validation`, they are coerced to the declared types. A missing
-   required argument, an undeclared argument or a value that can't be coerced is
-   an ordinary tool error, and nothing else runs. This also happens on the
-   legacy runner and in `use_tool`.
+1. **Prepare the arguments, once.** A tool is *prepared* when it uses the base
+   `execute_with_validation`: its arguments are coerced to the declared types. A
+   missing required argument, an undeclared argument or a value that can't be
+   coerced is an ordinary tool error, and nothing else runs. This also happens
+   on the legacy runner and in `use_tool`. **The exception is a tool that
+   declares no `param`s: nothing is coerced or rejected,** and it gets every
+   argument passed through.
 2. **Evaluate the rules.** A blocked call stops here.
 3. **Run the `before` hooks,** in declaration order. The first refusal stops the
    call.
@@ -151,14 +183,14 @@ as uncheckable.
 
 ### What preparing the arguments does and doesn't do
 
-- Undeclared arguments are rejected, not dropped.
+- For a tool with declared `param`s, undeclared arguments are rejected, not
+  dropped.
 - **Nested keys inside object arguments reach the tool as strings,** even if the
   caller passed symbols. Top-level arguments reach `execute` as keywords. This
   differs from agents without a harness when `use_tool` is given nested symbol
   keys.
 - Validation is limited to what the base class does: arrays, objects and enum
   values aren't checked, and an unrecognised boolean becomes `false`.
-- A tool that declares no `param`s gets every argument passed through.
 
 ### Tools that override `execute_with_validation`
 
@@ -167,8 +199,9 @@ A tool that overrides `execute_with_validation` (MCP tools do), or isn't a
 does no coercion or argument checks for it beyond what your rules see.** Rules
 see the arguments as supplied, with string keys, and the harness passes the tool
 a copy of exactly those. What the tool does with them afterwards is its own
-behaviour. For MCP tools, `matching:` isn't validated against the server's
-schema.
+behaviour. The names in `matching:` are still
+[checked](#checking-the-argument-names) where the tool lists its arguments, but
+no values are validated against a schema.
 
 ## Hooks
 
@@ -191,8 +224,13 @@ Hooks can't change the arguments. Watch for blocks whose last expression is
 
 ### `after`
 
-`after` hooks run once the tool has, whether it returned or raised. They don't
-run for calls that were refused or had invalid arguments. A non-empty String
+`after` hooks run once the tool has returned, or raised a `StandardError` or a
+`ScriptError` (`NotImplementedError`, for one). **They don't run if the tool
+ends any other way:** by raising another exception, such as `SystemStackError`
+or `NoMemoryError`, by calling `exit`, through `throw`, or because its thread was
+killed. Don't rely on an `after` hook for cleanup or auditing that must happen.
+Nor do they run for calls that were refused or had invalid arguments. A
+non-empty String
 they return is appended to what the model reads, after the result or error
 message. Other return values are ignored. Many built-in tools report failures by
 returning a message instead of raising, so `call.error` being `nil` doesn't mean
@@ -204,9 +242,11 @@ copied, and `nil`, booleans, numbers and symbols are passed as they are.
 as its text** (`to_s`), also when it's nested inside the result. `call.error` is
 the exception the tool raised.
 
-Notes go only to the model. `tool_calls_history`, memory and `ToolCallResult`
-keep the raw result. `use_tool` returns the result (or raises) as usual and logs
-the notes.
+Notes are added only to what the model reads. `tool_calls_history`, memory and
+`ToolCallResult` keep the raw result. When a legacy run reaches its iteration
+limit and takes its final answer from the last tool output, that answer has no
+notes either. (The model can still repeat a note in its own words.) `use_tool`
+returns the result (or raises) as usual and logs the notes.
 
 ### Threads and timeouts
 

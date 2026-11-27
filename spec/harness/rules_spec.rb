@@ -391,11 +391,118 @@ RSpec.describe RCrewAI::Harness do
       expect(harness.validate_tools([duck])).to eq([])
     end
 
+    it 'warns once for a tool with no params, however often it is checked' do
+      tool = Class.new(RCrewAI::Tools::Base) { tool_name 'writer' }.new
+      harness = described_class.new { block :writer, matching: { file: /x/ } }
+
+      expect { 3.times { harness.validate_tools([tool], strict: true) } }
+        .to output(/\A[^\n]*no DSL declarations[^\n]*\n\z/).to_stderr
+    end
+
     it 'uses the instance name of an MCP tool' do
       adapter = RCrewAI::MCP::ToolAdapter.new(nil, { 'name' => 'send' }, 'srv')
       harness = described_class.new { block :srv__send, matching: { to: /x/ } }
 
       expect(harness.validate_tools([adapter])).to eq([])
+    end
+  end
+end
+
+RSpec.describe RCrewAI::Harness, '#validate_tools with a tool that lists its arguments only in json_schema' do
+  let(:harness) { described_class.new { block :srv__send, matching: { adress: /x/ } } }
+
+  def adapter(input_schema)
+    RCrewAI::MCP::ToolAdapter.new(nil, { 'name' => 'send', 'inputSchema' => input_schema }.compact, 'srv')
+  end
+
+  def duck(schema)
+    Struct.new(:name, :json_schema).new('srv__send', schema)
+  end
+
+  let(:listed) { { 'type' => 'object', 'properties' => { 'address' => { 'type' => 'string' } } } }
+
+  it 'raises when matching: names an argument the schema does not list' do
+    expect { harness.validate_tools([adapter(listed)]) }
+      .to raise_error(ArgumentError, "matching: names 'adress', which the tool 'srv__send' doesn't declare " \
+                                     '(it declares: address)')
+  end
+
+  it 'accepts a listed argument' do
+    harness = described_class.new { block :srv__send, matching: { address: /x/ } }
+
+    expect(harness.validate_tools([adapter(listed)])).to eq([])
+  end
+
+  it 'reads symbol keys too' do
+    schema = { parameters: { properties: { address: { type: 'string' } } } }
+
+    expect { harness.validate_tools([duck(schema)]) }.to raise_error(ArgumentError, /adress/)
+    expect(described_class.new { block :srv__send, matching: { 'address' => /x/ } }.validate_tools([duck(schema)]))
+      .to eq([])
+  end
+
+  it 'checks the list when additionalProperties is anything but true' do
+    [false, { 'type' => 'string' }].each do |extra|
+      expect { harness.validate_tools([adapter(listed.merge('additionalProperties' => extra))]) }
+        .to raise_error(ArgumentError, /adress/)
+    end
+  end
+
+  it 'does not check when additionalProperties is true, under either kind of key' do
+    expect(harness.validate_tools([adapter(listed.merge('additionalProperties' => true))])).to eq([])
+    expect(harness.validate_tools([duck(parameters: { properties: { address: {} }, additionalProperties: true })]))
+      .to eq([])
+  end
+
+  it 'does not check when no arguments are listed' do
+    [nil, 'schema', {}, { parameters: nil }, { parameters: [] }, { parameters: { type: 'object' } },
+     { parameters: { properties: {} } }, { parameters: { properties: ['address'] } }].each do |schema|
+      expect(harness.validate_tools([duck(schema)])).to eq([])
+    end
+    expect(harness.validate_tools([adapter(nil)])).to eq([])
+  end
+
+  it 'prefers declared params to the schema' do
+    tool = Class.new(RCrewAI::Tools::Base) do
+      tool_name 'srv__send'
+      param :adress, type: :string
+
+      def json_schema
+        raise 'not needed'
+      end
+    end.new
+
+    expect(harness.validate_tools([tool])).to eq([])
+  end
+
+  [RuntimeError, NotImplementedError, SystemStackError].each do |error|
+    context "when reading the schema raises #{error}" do
+      let(:broken) do
+        tool = duck(nil)
+        tool.define_singleton_method(:json_schema) { raise error }
+        tool
+      end
+
+      it 'warns instead of raising' do
+        warnings = harness.validate_tools([broken])
+
+        expect(warnings.size).to eq(1)
+        expect(warnings.first).to include('srv__send', 'json_schema', error.name)
+      end
+
+      it 'raises when strict, as it is for a call' do
+        expect { harness.validate_tools([broken], strict: true) }.to raise_error(ArgumentError, /json_schema/)
+      end
+
+      it 'does not read the schema unless a matching: rule names the tool' do
+        harness = described_class.new do
+          block :srv__send
+          block :other, matching: { x: /x/ }
+          before(:srv__send) { true }
+        end
+
+        expect(harness.validate_tools([broken, Struct.new(:name).new('other')], strict: true)).to eq([])
+      end
     end
   end
 end

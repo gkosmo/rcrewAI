@@ -320,6 +320,45 @@ RSpec.describe 'harness enforcement' do
     end
   end
 
+  describe 'matching: against the arguments an MCP tool lists' do
+    let(:client) { double('MCP client', call_tool: 'sent') }
+    let(:adapter) do
+      schema = { 'type' => 'object', 'properties' => { 'address' => { 'type' => 'string' } } }
+      RCrewAI::MCP::ToolAdapter.new(client, { 'name' => 'send', 'inputSchema' => schema }, 'srv')
+    end
+    let(:misspelt) do
+      RCrewAI::Harness.new(default: :allow) { block :srv__send, matching: { adress: /@evil/ } }
+    end
+
+    it 'rejects a misspelt name when the agent is built' do
+      expect { build_agent(HarnessLLM.new(native: true, turns: []), tools: [adapter], harness: misspelt) }
+        .to raise_error(ArgumentError, /adress/)
+    end
+
+    it 'blocks the calls of such a tool added later' do
+      agent = build_agent(HarnessLLM.new(native: true, turns: []), tools: [], harness: misspelt)
+      agent.tools << adapter
+
+      expect(agent.use_tool('srv__send', address: 'a@evil'))
+        .to match(/REFUSED: Tool 'srv__send' was not run: .*adress/)
+      expect(client).not_to have_received(:call_tool)
+    end
+
+    it 'builds with a schema that cannot be read, and blocks only the tools a matching: rule names' do
+      allow(adapter).to receive(:json_schema).and_raise('server gone')
+      harness = RCrewAI::Harness.new(default: :allow) { block :srv__send, matching: { address: /@evil/ } }
+      agent = build_agent(HarnessLLM.new(native: true, turns: []), tools: [adapter], harness: harness)
+
+      expect(agent.use_tool('srv__send', address: 'a@ok'))
+        .to match(/REFUSED: Tool 'srv__send' was not run: .*json_schema/)
+      expect(client).not_to have_received(:call_tool)
+
+      unmatched = build_agent(HarnessLLM.new(native: true, turns: []), tools: [adapter],
+                                                                       harness: RCrewAI::Harness.new { allow :srv__send })
+      expect(unmatched.use_tool('srv__send', address: 'a@ok')).to eq('sent')
+    end
+  end
+
   describe 'building an agent' do
     it 'rejects a matching: argument the tool does not declare' do
       harness = RCrewAI::Harness.new { block :spy_writer, matching: { file_path: /x/ } }

@@ -7,8 +7,10 @@ require_relative 'tools/base'
 
 module RCrewAI
   # The one place a tool runs. Every path goes through #call, so none of them can
-  # skip the approval check or the agent's harness; spec/integration/
-  # tool_approval_spec.rb fails if lib/ gains another call to a tool's #execute.
+  # skip the approval check or the agent's harness. spec/integration/
+  # tool_approval_spec.rb scans lib/ for new lines that look like another call
+  # to an execute method. It's a text scan, so it can't catch every way to make
+  # one; see the limits listed there.
   class ToolExecution
     def initialize(agent:, event_sink: nil)
       @agent = agent
@@ -169,7 +171,7 @@ module RCrewAI
     # for other tools, are ignored here; the agent logs them once.
     def decide(harness, tool, checked)
       begin
-        harness.validate_tools([tool])
+        harness.validate_tools([tool], strict: true)
       rescue ArgumentError => e
         return [:block, "The harness can't check this tool: #{e.message}"]
       end

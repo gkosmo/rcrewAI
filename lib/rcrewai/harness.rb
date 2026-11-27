@@ -82,8 +82,10 @@ module RCrewAI
     end
 
     # Runs the block after each call to the named tools (every tool when none
-    # is named) that ran, whether the tool returned or raised. It gets a
-    # Harness::Call with +result+ or +error+ set. A String it returns is
+    # is named) that ran, once the tool has returned or raised a StandardError
+    # or ScriptError; it doesn't run if the tool ends any other way, such as
+    # exit or a stack overflow. It gets a Harness::Call with +result+ or
+    # +error+ set. A String it returns is
     # appended to what the model reads, after the result or error; other
     # values are ignored. A hook that raises or times out can't undo the call:
     # the result stands and the model is told the hook failed. Before and
@@ -127,14 +129,20 @@ module RCrewAI
     # Checks the rules and hooks against the tools an agent has. Returns a
     # warning for each name that matches none of them. Raises ArgumentError
     # when +matching:+ names an argument a tool doesn't declare, since that
-    # rule could never match.
-    def validate_tools(tools)
+    # rule could never match. A tool's arguments are its declared params or,
+    # with none, the properties of its json_schema (see #schema_arguments); a
+    # tool that lists neither isn't checked.
+    #
+    # A json_schema that raises is only a warning, unless +strict+ is set, as
+    # it is for a call: then it raises ArgumentError too. It's only read for
+    # tools a +matching:+ rule names.
+    def validate_tools(tools, strict: false)
       by_name = tools.group_by { |tool| tool.name.to_s }
-      @rules.each { |rule| check_arguments!(rule, by_name) }
+      unread = @rules.flat_map { |rule| check_arguments(rule, by_name, strict) }.uniq
 
       named = { 'a rule' => @rules.flat_map(&:tool_names).uniq, 'a before hook' => @hooks.tool_names(:before),
                 'an after hook' => @hooks.tool_names(:after) }
-      named.flat_map do |what, names|
+      unread + named.flat_map do |what, names|
         (names - by_name.keys).map do |name|
           "The harness has #{what} for '#{name}', but the agent has no tool with that name " \
             "(its tools: #{by_name.keys.join(', ')})"
@@ -183,25 +191,59 @@ module RCrewAI
       end.freeze
     end
 
-    def check_arguments!(rule, by_name)
-      rule.tool_names.each do |name|
-        by_name.fetch(name, []).each do |tool|
-          declared = declared_params(tool)
-          next if declared.empty?
+    # Raises ArgumentError for an argument that +rule+ matches on and a tool
+    # doesn't have. Returns the warnings for schemas that couldn't be read.
+    def check_arguments(rule, by_name, strict)
+      return [] if rule.matched_arguments.empty?
 
-          unknown = rule.matched_arguments - declared
-          next if unknown.empty?
-
-          raise ArgumentError, "matching: names '#{unknown.join("', '")}', which the tool '#{name}' doesn't " \
-                               "declare (it declares: #{declared.join(', ')})"
-        end
+      rule.tool_names.flat_map do |name|
+        by_name.fetch(name, []).filter_map { |tool| check_tool_arguments(rule, name, tool, strict) }
       end
+    end
+
+    def check_tool_arguments(rule, name, tool, strict)
+      begin
+        known = declared_params(tool)
+        known = schema_arguments(tool) if known.empty?
+      rescue StandardError, ScriptError, SystemStackError => e
+        problem = "The harness has a matching: rule for '#{name}', but the tool's json_schema couldn't be read " \
+                  "(#{e.class})"
+        raise ArgumentError, problem if strict
+
+        return "#{problem}. Its calls are blocked while that is so."
+      end
+      return nil if known.empty?
+
+      unknown = rule.matched_arguments - known
+      return nil if unknown.empty?
+
+      raise ArgumentError, "matching: names '#{unknown.join("', '")}', which the tool '#{name}' doesn't " \
+                           "declare (it declares: #{known.join(', ')})"
     end
 
     def declared_params(tool)
       return [] unless tool.class.respond_to?(:params)
 
       tool.class.params.map { |param| param[:name].to_s }
+    end
+
+    # The argument names in the properties of the tool's json_schema, or [] when
+    # there's no list to check against: no schema, no properties, or
+    # additionalProperties: true. Values aren't checked.
+    def schema_arguments(tool)
+      return [] unless tool.respond_to?(:json_schema)
+
+      parameters = schema_entry(tool.json_schema, :parameters)
+      return [] if schema_entry(parameters, :additionalProperties) == true
+
+      properties = schema_entry(parameters, :properties)
+      properties.is_a?(Hash) ? properties.keys.map(&:to_s) : []
+    end
+
+    def schema_entry(schema, key)
+      return nil unless schema.is_a?(Hash)
+
+      schema.key?(key) ? schema[key] : schema[key.to_s]
     end
   end
 end
