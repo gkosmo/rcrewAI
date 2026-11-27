@@ -12,6 +12,12 @@ two file tools, watch it overwrite a secrets file, and then add a harness one
 piece at a time. The [harness API page]({{ site.baseurl }}/api/harness) has the
 full reference.
 
+The harness was added after version 0.12.0: you need a newer release of rcrewai,
+since 0.12.0 and earlier don't include it. If there is no newer release yet, use
+the [repository](https://github.com/gkosmo/rcrewAI); the
+[changelog](https://github.com/gkosmo/rcrewAI/blob/main/CHANGELOG.md) lists what
+each version has.
+
 You need to know how to build an agent with tools. No LLM or API key is needed: a
 small scripted class stands in for the model, so you choose exactly what the
 "model" tries to do. A harness is **not a sandbox**, and the
@@ -184,7 +190,9 @@ Know exactly what each one covers:
   case, with `/` between directories. That includes `.envrc` and
   `.env.example`. It does **not** cover `production.env`, files inside a
   directory called `.env`, or other secrets such as `config/master.key`,
-  `secrets.yml` or an SSH key. Add what your project has.
+  `secrets.yml` or an SSH key. Add what your project has. It matches the path's
+  text only, so a symlink with another name that points to `.env` gets through:
+  see [Not a Sandbox](#7-not-a-sandbox).
 - `LOCKFILES` covers any path ending in `.lock` (`Gemfile.lock`, `yarn.lock`,
   `Cargo.lock`, `poetry.lock`, `composer.lock`), plus files called
   `package-lock.json`, `npm-shrinkwrap.json` or `pnpm-lock.yaml`. It does **not**
@@ -353,7 +361,7 @@ unless you set it on the agent or in the configuration. See
 
 A `before` hook runs your own code on each call the rules didn't block, before
 anyone is asked to approve it. Use one when you want to work out the refusal
-yourself. This one refuses file content that looks like a key:
+yourself. This one refuses file content that matches one of three kinds of key:
 
 ```ruby
 KEY_SHAPES = /AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|\bsk-[A-Za-z0-9_-]{20,}/
@@ -381,11 +389,19 @@ model reads: Content successfully written to config.rb
 KEY = ENV.fetch('ACCESS_KEY')
 ```
 
-This catches three shapes and nothing else: an `AKIA` access key ID, a PEM
-private key header, and `sk-` followed by at least 20 letters, digits, `_` or
-`-`. Other kinds of key pass, as does one that
-is encoded, or split between a write and a later append (`mode: 'a'`). The hook
-sees one call's content, not the finished file, and it only guards `file_writer`.
+This catches three shapes and nothing else:
+
+- `AKIA` followed by 16 capital letters or digits, an AWS access key ID;
+- a PEM private key header, `-----BEGIN ... PRIVATE KEY-----`;
+- `sk-` followed by at least 20 letters, digits, `_` or `-`, **only at the start
+  of a word**. The `\b` in the pattern means the character before `sk-` can't be a
+  letter, digit or `_`. So `KEY_sk-...` and `xsk-...` get through, as does source
+  code with a literal `\n` right before `sk-`, where that character is the letter
+  `n`. Without the `\b`, long words such as `task-...` would be refused too.
+
+Other kinds of key pass, as does one that is encoded, or split between a write and
+a later append (`mode: 'a'`). The hook sees one call's content, not the finished
+file, and it only guards `file_writer`.
 
 ### Only `true` or `nil` lets a call run
 
@@ -422,23 +438,50 @@ line of a hook is a logging call that returns something else: end it with `true`
 
 An `after` hook runs once the tool has. It can't undo the call, but a String it
 returns is added to what the model reads. Use that to report problems while the
-model can still fix them. This one syntax-checks every Ruby file the assistant
-writes:
+model can still fix them. This one syntax-checks the Ruby files the assistant
+writes. It checks only paths ending in lowercase `.rb`, so not `Rakefile`,
+`Gemfile`, `.rake`, `.gemspec` or `.RB` files.
+
+A syntax error message **quotes the file**, and the model reads it. So the hook
+must check only a file the model has just written, and not any path it names.
 
 ```ruby
 require 'open3'
 require 'rbconfig'
 
 harness.after(:file_writer) do |call|
+  # FileWriter reports a failure by returning a message, so check for success.
+  next unless call.result.to_s.start_with?('Content successfully ')
+
   path = call.args['file_path']
-  next unless path.end_with?('.rb') && File.file?(path)
+  next unless path.end_with?('.rb')
+
+  # Only a file inside the project, reached without a symlink.
+  full = File.expand_path(path)
+  next unless full.start_with?(File.realpath('.') + File::SEPARATOR) && File.realpath(path) == full
 
   output, status = Open3.capture2e(RbConfig.ruby, '-c', '--', path)
   "ruby -c found a syntax error in #{path}. Fix the file:\n#{output}" unless status.success?
 end
 ```
 
-The path comes from the model, so how you run the command matters:
+Both checks before the command matter:
+
+- **A refused or failed write still runs the `after` hook.** `FileWriter` doesn't
+  raise. It returns `File write failed: ...`, so `call.error` is `nil` and the
+  message is in `call.result`. A write outside the project is refused this way, and
+  so is an invalid `mode`. A hook that only checked that the file exists would then
+  quote a file that the model wasn't allowed to write. If you use another writing
+  tool, find out what it returns on success.
+- **A successful write may have gone through a symlink**, even to a file outside
+  the project, because of the
+  [limit in `FileWriter`](#the-file-tools-own-path-checks-are-separate). An empty
+  append would then be enough to have that file quoted. The hook skips any path
+  that goes through a symlink or ends up outside the current directory, without
+  a note. This only stops the **check** from quoting the file: the write has
+  already happened. It doesn't detect hard links.
+
+The path also comes from the model, so how you run the command matters:
 
 - `capture2e` gets **separate arguments, not one command string**, so no shell
   runs. A file called `x; echo oops.rb` is only a strange file name. With
@@ -447,9 +490,6 @@ The path comes from the model, so how you run the command matters:
   option instead of the file, and the check can pass without looking at the file.
 - `ruby -c` parses the file without running it. `RbConfig.ruby` is the Ruby that
   is running your script.
-
-`call.error` is `nil` even when `FileWriter` fails, because it reports a failure
-by returning a message. So the hook checks that the file exists.
 
 The model writes a broken file, reads the error and fixes it:
 
@@ -472,8 +512,13 @@ Ruby's own error message follows that line. It reports the syntax error in
 `greeter.rb` with a line number, in wording that depends on your Ruby version.
 The second write gets no note, and the final `puts` shows the fixed file.
 
-The broken file **was** written: use a `before` hook for anything that must never
-reach the disk. If an `after` hook raises or times out, the result stands and the model is
+The broken file **was** written. A `before` hook can refuse a call before it
+writes, but it is no guarantee about what ends up on disk. It sees only that one
+call's content, and the one in step 4 guards only `file_writer`: a key split over
+two appends, or written by another tool, gets through. For what must never happen,
+see [Not a Sandbox](#7-not-a-sandbox).
+
+If an `after` hook raises or times out, the result stands and the model is
 told that the hook failed. `after` hooks don't run in every case, so don't rely on
 one for auditing: see [`after`]({{ site.baseurl }}/api/harness#after).
 
