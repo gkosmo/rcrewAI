@@ -24,6 +24,25 @@ class HarnessSpyTool < RCrewAI::Tools::Base
   end
 end
 
+# A spy_writer that returns +value+, or raises +error+ when given one.
+class HarnessReturningTool < RCrewAI::Tools::Base
+  tool_name 'spy_writer'
+  description 'returns what it was given'
+  param :path, type: :string, required: true
+
+  def initialize(value = nil, error: nil)
+    super()
+    @value = value
+    @error = error
+  end
+
+  def execute(**)
+    raise @error if @error
+
+    @value
+  end
+end
+
 # Replays scripted turns and remembers the messages of each request, then
 # answers FINAL_ANSWER[all done].
 class HarnessLLM

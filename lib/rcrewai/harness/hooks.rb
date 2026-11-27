@@ -41,6 +41,39 @@ module RCrewAI
       # caller holds. A thread variable, so a Fiber inside the hook carries it.
       RUNNING = :rcrewai_harness_hooks
 
+      # Joins +pieces+, then the +notes+ on lines of their own, into the text
+      # the model reads after a tool call. Never raises: a tool call that ran
+      # must not look failed because its text was in another encoding. Text
+      # that joins as it is stays as it is; otherwise every part is made UTF-8.
+      def self.model_text(pieces, notes = [])
+        head = join(Array(pieces), '')
+        notes.empty? ? head : join([head, *notes], "\n")
+      end
+
+      def self.join(parts, separator)
+        parts.join(separator)
+      rescue StandardError
+        parts.map { |part| utf8(part) }.join(separator)
+      end
+
+      # Valid UTF-8 text for +value+. Bytes that aren't UTF-8 (and characters
+      # UTF-8 can't hold) are replaced. Never raises.
+      def self.utf8(value)
+        text = String.new(String === value ? value : value.to_s) # rubocop:disable Style/CaseEquality
+        text.force_encoding(Encoding::UTF_8) if text.encoding == Encoding::BINARY
+        text = text.encode(Encoding::UTF_8, invalid: :replace, undef: :replace) unless text.encoding == Encoding::UTF_8
+        text.scrub
+      rescue StandardError
+        ascii_only(value)
+      end
+
+      # For text whose encoding can't be converted (a dummy encoding, say).
+      def self.ascii_only(value)
+        String.new(value.to_s).b.gsub(/[^\t\n\r\x20-\x7e]/n, '?').force_encoding(Encoding::UTF_8)
+      rescue StandardError
+        +'(text that could not be read)'
+      end
+
       def initialize(timeout:)
         @timeout = timeout
         @hooks = []
@@ -196,7 +229,7 @@ module RCrewAI
         value = hook.body.call(call)
         return NO_NOTE unless String === value # rubocop:disable Style/CaseEquality
 
-        text = String.new(value).freeze
+        text = Hooks.utf8(value).freeze
         text.empty? ? NO_NOTE : Note.new(text: text, hook: hook.label, error: nil)
       rescue Exception => e # exit, a stack overflow and the rest are reported too
         raised_after(hook, e)
@@ -251,7 +284,7 @@ module RCrewAI
         klass = Kernel.instance_method(:class).bind_call(error)
         class_name = Module.instance_method(:name).bind_call(klass) || 'an anonymous exception'
         message = begin
-          error.message.to_s
+          Hooks.utf8(error.message)
         rescue Exception
           '(its message could not be read)'
         end

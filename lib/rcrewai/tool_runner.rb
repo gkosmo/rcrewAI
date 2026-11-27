@@ -129,22 +129,23 @@ module RCrewAI
                                      duration_ms: duration)
         {
           history: { tool: call[:name], args: call[:arguments], result: result, duration_ms: duration },
-          message: tool_result_message(call[:id], with_notes(result.to_s, notes))
+          message: tool_result_message(call[:id], with_notes([result.to_s], notes))
         }
       rescue ToolApproval::Refused => e
         emit(Events::ToolCallError, iteration: iter,
                                     tool: call[:name], call_id: call[:id], error: e.message)
-        { message: tool_result_message(call[:id], with_notes("REFUSED: #{e.message}", notes)) }
+        { message: tool_result_message(call[:id], with_notes(['REFUSED: ', e.message], notes)) }
       rescue StandardError => e
         emit(Events::ToolCallError, iteration: iter,
                                     tool: call[:name], call_id: call[:id], error: e.message)
-        { message: tool_result_message(call[:id], with_notes("ERROR: #{e.message}", notes)) }
+        { message: tool_result_message(call[:id], with_notes(['ERROR: ', e.message], notes)) }
       end
     end
 
     # The harness's after-hook notes go only to the model, after the result.
-    def with_notes(text, notes)
-      [text, *notes].join("\n")
+    # Never raises, whatever the encodings of the parts.
+    def with_notes(pieces, notes)
+      Harness::Hooks.model_text(pieces, notes)
     end
 
     # Agent memory is shared across the worker threads of one turn.

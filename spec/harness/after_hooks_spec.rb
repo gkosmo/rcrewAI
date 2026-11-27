@@ -154,6 +154,72 @@ RSpec.describe 'harness after hooks' do
     end
   end
 
+  # What the model was told about the tool call: the tool message (native) or
+  # the user message with the tool results (legacy).
+  def tool_text(llm, native)
+    messages = llm.requests.last
+    (native ? messages.find { |m| m[:role] == 'tool' } : messages.last)[:content]
+  end
+
+  { 'native' => true, 'legacy' => false }.each do |runner, native|
+    context "with notes and results in other encodings, on the #{runner} runner" do
+      def run_with(native, tool, note)
+        llm = HarnessLLM.new(native: native, turns: [native ? native_turn({ 'path' => 'a.rb' }) : legacy_turn({ 'path' => 'a.rb' })])
+        @result = build_agent(allowing { after { note } }, llm, tools: [tool]).execute_task(task, stream: ->(e) { events << e })
+        llm
+      end
+
+      def expect_success(text, *parts)
+        expect(text.encoding).to eq(Encoding::UTF_8)
+        expect(text).to be_valid_encoding
+        expect(text).to include(*parts)
+        expect(events.grep(RCrewAI::Events::ToolCallError)).to be_empty
+        expect(@result[:tool_calls_history].length).to eq(1)
+      end
+
+      {
+        'a binary note with a non-ASCII result' => ['wrote café', "lint \xFF\xFE ok".b, ['wrote café', 'lint ', ' ok']],
+        'a UTF-16LE note with an ASCII result' => ['wrote a.rb', 'lint: 2 offences'.encode('UTF-16LE'),
+                                                   ['wrote a.rb', 'lint: 2 offences']],
+        'an invalid UTF-8 note' => ['wrote café', (+"bad \xFF note").force_encoding('UTF-8'), ['wrote café', 'bad ', ' note']],
+        'a binary result with a non-ASCII note' => ["data \xFF".b, 'naïve lint', ['data ', 'naïve lint']],
+        'an ISO-8859-1 result with a non-ASCII note' => [
+          'wrote café'.encode('ISO-8859-1'), 'naïve lint', ['wrote café', 'naïve lint']
+        ]
+      }.each do |what, (result, note, parts)|
+        it "keeps the call a success and tells the model, for #{what}" do
+          llm = run_with(native, HarnessReturningTool.new(result), note)
+
+          expect_success(tool_text(llm, native), *parts)
+        end
+      end
+
+      it 'tells the model the error and the note for a tool whose error message is UTF-16LE' do
+        error = RCrewAI::Tools::ToolError.new('disk full'.encode('UTF-16LE'))
+        llm = run_with(native, HarnessReturningTool.new(error: error), 'naïve lint')
+        text = tool_text(llm, native)
+
+        expect(text).to be_valid_encoding
+        expect(text).to include('disk full', 'naïve lint')
+      end
+    end
+
+    context "with a result a hook could change, on the #{runner} runner" do
+      it 'gives the hook a frozen copy, so history and the event keep the raw result' do
+        harness = allowing { after { |call| call.result['k'] = 'MUTATED' } }
+        turn = native ? native_turn({ 'path' => 'a.rb' }) : legacy_turn({ 'path' => 'a.rb' })
+        llm = HarnessLLM.new(native: native, turns: [turn])
+        result = build_agent(harness, llm, tools: [HarnessReturningTool.new({ 'k' => 'v', 'list' => ['x'] })])
+                 .execute_task(task, stream: ->(e) { events << e })
+        sent = tool_text(llm, native)
+
+        expect(result[:tool_calls_history].map { |h| h[:result] }).to eq([{ 'k' => 'v', 'list' => ['x'] }])
+        expect(events.grep(RCrewAI::Events::ToolCallResult).map(&:result)).to eq([{ 'k' => 'v', 'list' => ['x'] }])
+        expect(sent).to include(failed_note('after(*) #1', 'FrozenError'))
+      end
+    end
+  end
+
   it 'gives the hook the frozen arguments and the result' do
     seen = nil
     run_calls(allowing { after { |call| (seen = call) and nil } }, { path: 7 })
@@ -293,6 +359,58 @@ RSpec.describe 'harness after hooks' do
     expect(notes.map(&:hook)).to eq(['after(*) #1', 'after(w, v) #2'])
     expect(notes.map(&:text)).to eq([failed_note('after(*) #1', 'RuntimeError'),
                                      failed_note('after(w, v) #2', 'RuntimeError')])
+  end
+end
+
+# After hooks get a deep, frozen copy of the result, so they can't change what
+# history, memory and events record. Checked directly, not through an agent.
+RSpec.describe 'the result a harness after hook is given' do
+  def seen_by_hook(value)
+    seen = nil
+    harness = RCrewAI::Harness.new(default: :allow) { after { |call| (seen = call.result) and nil } }
+    agent = Struct.new(:name, :harness).new('a', harness)
+    returned = RCrewAI::ToolExecution.new(agent: agent).call(HarnessReturningTool.new(value), { 'path' => 'a.rb' })
+    [returned, seen]
+  end
+
+  it 'is a deep frozen copy, even of a structure that contains itself' do
+    cyclic = [{ 'k' => +'v' }]
+    cyclic << cyclic
+    returned, seen = seen_by_hook(cyclic)
+
+    expect(returned).to equal(cyclic)
+    expect(returned).not_to be_frozen
+    expect(seen).not_to equal(cyclic)
+    expect(seen).to be_frozen
+    expect(seen.first).to be_frozen
+    expect(seen.first['k']).to be_frozen
+    expect(seen.last).to equal(seen)
+  end
+
+  it 'is the text of a result that cannot be copied' do
+    uncopyable = Struct.new(:callback).new(-> {})
+    returned, seen = seen_by_hook(uncopyable)
+
+    expect(returned).to equal(uncopyable)
+    expect(seen).to eq(uncopyable.to_s)
+    expect(seen).to be_frozen
+  end
+
+  it 'names the class of a result that can neither be copied nor turned into text' do
+    hopeless = stub_const('HopelessResult', Class.new do
+      def initialize
+        @callback = -> {}
+      end
+
+      def to_s
+        raise 'no text'
+      end
+    end).new
+    returned, seen = seen_by_hook(hopeless)
+
+    expect(returned).to equal(hopeless)
+    expect(seen).to eq('(a result of class HopelessResult that could not be copied)')
+    expect(seen).to be_frozen
   end
 end
 

@@ -104,23 +104,25 @@ module RCrewAI
           emit(Events::ToolCallResult, iteration: iter, tool: tool_name,
                                        call_id: nil, result: result, duration_ms: duration)
           iteration_history << { tool: tool_name, args: params, result: result, duration_ms: duration }
-          results << with_notes("Tool #{tool_name} result: #{result}", notes)
+          results << with_notes(["Tool #{tool_name} result: ", result.to_s], notes)
         rescue ToolApproval::Refused => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name, call_id: nil, error: e.message)
-          results << with_notes(e.model_message, notes)
+          results << with_notes([e.model_message], notes)
         rescue StandardError => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name,
                                       call_id: nil, error: e.message)
-          results << with_notes("Tool #{tool_name} failed: #{e.message}", notes)
+          results << with_notes(["Tool #{tool_name} failed: ", e.message], notes)
         end
       end
 
-      [results.join("\n"), iteration_history]
+      # Calls in one turn can return text in different encodings.
+      [Harness::Hooks.join(results, "\n"), iteration_history]
     end
 
     # The harness's after-hook notes go only to the model, after the result.
-    def with_notes(text, notes)
-      [text, *notes].join("\n")
+    # Never raises, whatever the encodings of the parts.
+    def with_notes(pieces, notes)
+      Harness::Hooks.model_text(pieces, notes)
     end
 
     def parse_tool_params(params_str)

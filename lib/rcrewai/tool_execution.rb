@@ -62,12 +62,28 @@ module RCrewAI
       add_notes(notes, after_notes(harness, tool, iteration) { hook_call(tool, checked, call_id, error: e) })
       raise
     else
-      add_notes(notes, after_notes(harness, tool, iteration) do
-        # A String result is copied, so a hook can't change what history records.
-        seen = String === result ? result.dup.freeze : result # rubocop:disable Style/CaseEquality
-        hook_call(tool, checked, call_id, result: seen)
-      end)
+      add_notes(notes, after_notes(harness, tool, iteration) { hook_call(tool, checked, call_id, result: hook_view(result)) })
       result
+    end
+
+    # A deep, frozen copy of +value+, so a hook can't change what history,
+    # memory and events record. Marshal copes with structures that contain
+    # themselves. What can't be copied is shown as its text, or failing that
+    # its class. Never raises.
+    def hook_view(value)
+      return value if Ractor.shareable?(value) # already deeply frozen
+
+      Ractor.make_shareable(Marshal.load(Marshal.dump(value)))
+    rescue StandardError, ScriptError, SystemStackError
+      text_view(value)
+    end
+
+    def text_view(value)
+      String.new(value.to_s).freeze
+    rescue StandardError, ScriptError, SystemStackError
+      klass = Kernel.instance_method(:class).bind_call(value)
+      name = Module.instance_method(:name).bind_call(klass) || 'an anonymous class'
+      "(a result of class #{name} that could not be copied)".freeze
     end
 
     # Never raises: the tool has run, and an error here would make the call
