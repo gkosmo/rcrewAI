@@ -119,8 +119,9 @@ module RCrewAI
       end
 
       started = monotonic_ms
+      notes = []
       begin
-        result = @execution.call(tool, call[:arguments], call_id: call[:id], iteration: iter)
+        result = @execution.call(tool, call[:arguments], call_id: call[:id], iteration: iter, notes: notes)
         duration = monotonic_ms - started
         record_tool_usage(call, result)
         emit(Events::ToolCallResult, iteration: iter,
@@ -128,17 +129,22 @@ module RCrewAI
                                      duration_ms: duration)
         {
           history: { tool: call[:name], args: call[:arguments], result: result, duration_ms: duration },
-          message: tool_result_message(call[:id], result.to_s)
+          message: tool_result_message(call[:id], with_notes(result.to_s, notes))
         }
       rescue ToolApproval::Refused => e
         emit(Events::ToolCallError, iteration: iter,
                                     tool: call[:name], call_id: call[:id], error: e.message)
-        { message: tool_result_message(call[:id], "REFUSED: #{e.message}") }
+        { message: tool_result_message(call[:id], with_notes("REFUSED: #{e.message}", notes)) }
       rescue StandardError => e
         emit(Events::ToolCallError, iteration: iter,
                                     tool: call[:name], call_id: call[:id], error: e.message)
-        { message: tool_result_message(call[:id], "ERROR: #{e.message}") }
+        { message: tool_result_message(call[:id], with_notes("ERROR: #{e.message}", notes)) }
       end
+    end
+
+    # The harness's after-hook notes go only to the model, after the result.
+    def with_notes(text, notes)
+      [text, *notes].join("\n")
     end
 
     # Agent memory is shared across the worker threads of one turn.

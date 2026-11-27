@@ -96,25 +96,31 @@ module RCrewAI
         end
 
         started = monotonic_ms
+        notes = []
         begin
-          result = @execution.call(tool, params, iteration: iter, coerce: false)
+          result = @execution.call(tool, params, iteration: iter, coerce: false, notes: notes)
           duration = monotonic_ms - started
           @agent.memory.add_tool_usage(tool_name, params, result) if @agent.respond_to?(:memory) && @agent.memory
           emit(Events::ToolCallResult, iteration: iter, tool: tool_name,
                                        call_id: nil, result: result, duration_ms: duration)
           iteration_history << { tool: tool_name, args: params, result: result, duration_ms: duration }
-          results << "Tool #{tool_name} result: #{result}"
+          results << with_notes("Tool #{tool_name} result: #{result}", notes)
         rescue ToolApproval::Refused => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name, call_id: nil, error: e.message)
-          results << e.model_message
+          results << with_notes(e.model_message, notes)
         rescue StandardError => e
           emit(Events::ToolCallError, iteration: iter, tool: tool_name,
                                       call_id: nil, error: e.message)
-          results << "Tool #{tool_name} failed: #{e.message}"
+          results << with_notes("Tool #{tool_name} failed: #{e.message}", notes)
         end
       end
 
       [results.join("\n"), iteration_history]
+    end
+
+    # The harness's after-hook notes go only to the model, after the result.
+    def with_notes(text, notes)
+      [text, *notes].join("\n")
     end
 
     def parse_tool_params(params_str)

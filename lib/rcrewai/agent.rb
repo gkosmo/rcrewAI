@@ -142,7 +142,7 @@ module RCrewAI
       @logger.debug "Using tool: #{tool_name} with params: #{params}"
 
       begin
-        result = ToolExecution.new(agent: self).call(tool, params, coerce: false)
+        result = call_tool_logging_notes(tool, params)
 
         # Store tool usage in memory
         memory.add_tool_usage(tool_name, params, result)
@@ -441,6 +441,16 @@ module RCrewAI
       ToolApproval.refuse("No answer within #{timeout} seconds")
     end
 
+    # Outside a runner there's no model to read the harness's after-hook notes,
+    # so they're logged, and the tool's own result is returned (or its error
+    # raised) as without them.
+    def call_tool_logging_notes(tool, params)
+      notes = []
+      ToolExecution.new(agent: self).call(tool, params, coerce: false, notes: notes)
+    ensure
+      notes&.each { |note| @logger.info "After-hook note for #{tool.name}: #{note}" }
+    end
+
     # +tool+ is the one that failed, so a retry runs it however it was named.
     def handle_tool_failure(tool, params, error)
       tool_name = tool.name
@@ -466,7 +476,7 @@ module RCrewAI
       when 0
         # Retry with same parameters
         @logger.info 'Human requested retry with same parameters'
-        ToolExecution.new(agent: self).call(tool, params, coerce: false)
+        call_tool_logging_notes(tool, params)
       when 1
         # Retry with different parameters
         new_params_result = request_human_input(
@@ -477,8 +487,7 @@ module RCrewAI
 
         if new_params_result[:valid]
           @logger.info 'Human provided new parameters, retrying tool'
-          ToolExecution.new(agent: self).call(tool, new_params_result[:processed_input].transform_keys(&:to_sym),
-                                              coerce: false)
+          call_tool_logging_notes(tool, new_params_result[:processed_input].transform_keys(&:to_sym))
         else
           "Invalid parameters provided: #{new_params_result[:reason]}"
         end

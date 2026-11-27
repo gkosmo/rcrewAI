@@ -11,6 +11,7 @@ module RCrewAI
   #     allow :file_reader, :file_writer
   #     block :file_writer, matching: { file_path: /\.env\z/ }, reason: 'Secrets are read-only.'
   #     before(:file_writer) { |call| call.args['content'].include?('AKIA') ? 'Looks like a key.' : true }
+  #     after(:file_writer)  { |call| Lint.run(call.args['file_path']) }
   #   end
   #
   # Among the rules that apply to a call the strictest wins: block, then ask, then
@@ -19,6 +20,7 @@ module RCrewAI
   #
   # Before hooks run, in declaration order, for calls the rules didn't block,
   # and before anyone is asked for approval. Only true or nil let the call run.
+  # After hooks run once the tool has, and can only add notes for the model.
   #
   # Rules see only a tool's name and arguments. They aren't a sandbox.
   class Harness
@@ -79,10 +81,29 @@ module RCrewAI
       self
     end
 
+    # Runs the block after each call to the named tools (every tool when none
+    # is named) that ran, whether the tool returned or raised. It gets a
+    # Harness::Call with +result+ or +error+ set. A String it returns is
+    # appended to what the model reads, after the result or error; other
+    # values are ignored. A hook that raises or times out can't undo the call:
+    # the result stands and the model is told the hook failed. Before and
+    # after hooks on one harness run one at a time, and a hook can't make tool
+    # calls through its own harness (they're refused).
+    def after(*tools, &hook)
+      @hooks.add(:after, tools, hook)
+      self
+    end
+
     # Returns a Hooks::Refusal from the first before hook that refuses +call+,
     # or nil when they all pass.
     def check_before(call)
       @hooks.check_before(call)
+    end
+
+    # Runs the after hooks for +call+ and returns their Hooks::Notes, in
+    # declaration order.
+    def run_after(call)
+      @hooks.run_after(call)
     end
 
     # Rules and their conditions get a frozen, string-keyed copy of +args+, so

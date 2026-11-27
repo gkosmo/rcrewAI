@@ -20,10 +20,14 @@ module RCrewAI
     # +coerce: false+ passes arguments through unchecked, for callers that don't
     # go through the tool's parameter schema. Agents with a harness ignore it:
     # see #call_with_harness.
-    def call(tool, arguments, call_id: nil, iteration: nil, coerce: true)
+    #
+    # The after hooks' notes are appended to +notes+, also when the tool raised
+    # and its error is re-raised; they're for what the model reads, so the
+    # return value stays the tool's own result.
+    def call(tool, arguments, call_id: nil, iteration: nil, coerce: true, notes: [])
       arguments ||= {}
       harness = @agent.harness if @agent.respond_to?(:harness)
-      return call_with_harness(harness, tool, arguments, call_id, iteration) if harness
+      return call_with_harness(harness, tool, arguments, call_id, iteration, notes) if harness
 
       authorize!(tool, arguments, call_id, iteration) if approval_required?
       coerce ? tool.execute_with_validation(arguments) : tool.execute(**arguments)
@@ -35,7 +39,7 @@ module RCrewAI
     # before hooks, the approval handler and the tool all get that copy, so
     # what was checked is what runs. A tool that overrides execute_with_validation (or has none)
     # isn't prepared: it gets its arguments exactly as supplied.
-    def call_with_harness(harness, tool, arguments, call_id, iteration)
+    def call_with_harness(harness, tool, arguments, call_id, iteration, notes)
       prepared = prepared?(tool)
       checked = checked_copy(arguments)
       checked = checked_copy(tool.prepare_arguments(checked, reject_undeclared: true)) if prepared
@@ -46,7 +50,51 @@ module RCrewAI
       check_before!(harness, tool, checked, **details)
       authorize!(tool, checked, call_id, iteration) if outcome == :ask || approval_required?
 
-      run(tool, prepared, thawed(checked))
+      run_then_after(harness, tool, checked, notes, details) { run(tool, prepared, thawed(checked)) }
+    end
+
+    # Runs the tool, then its after hooks, whether it returned or raised. The
+    # tool's result or error is passed on unchanged; the hooks only add notes.
+    def run_then_after(harness, tool, checked, notes, details)
+      call_id, iteration = details.values_at(:call_id, :iteration)
+      result = yield
+    rescue StandardError, ScriptError => e
+      add_notes(notes, after_notes(harness, tool, iteration) { hook_call(tool, checked, call_id, error: e) })
+      raise
+    else
+      add_notes(notes, after_notes(harness, tool, iteration) do
+        # A String result is copied, so a hook can't change what history records.
+        seen = String === result ? result.dup.freeze : result # rubocop:disable Style/CaseEquality
+        hook_call(tool, checked, call_id, result: seen)
+      end)
+      result
+    end
+
+    # Never raises: the tool has run, and an error here would make the call
+    # look failed, inviting the model to repeat it. The block builds the Call.
+    def after_notes(harness, tool, iteration)
+      call = yield
+      found = harness.run_after(call)
+      found.each do |note|
+        next unless note.error
+
+        emit(Events::ToolHookFailed, :tool_hook_failed, iteration: iteration, tool: tool.name, call_id: call.call_id,
+                                                        hook: note.hook, phase: :after, error: note.error)
+      end
+      found.map(&:text)
+    rescue StandardError, ScriptError, SystemStackError => e
+      ["Note: the after hooks failed (#{e.class}). The tool call itself was not undone."]
+    end
+
+    def add_notes(notes, texts)
+      notes.concat(texts)
+    rescue StandardError
+      nil # an unusable notes array mustn't lose the tool's result
+    end
+
+    def hook_call(tool, checked, call_id, **extra)
+      Harness::Call.new(tool_name: tool.name.to_s.dup.freeze, args: checked, agent: frozen_copy(@agent.name),
+                        call_id: frozen_copy(call_id), **extra).freeze
     end
 
     def approval_required?
@@ -88,8 +136,7 @@ module RCrewAI
     # Hooks never raise through Hooks#check_before, but if running them fails
     # anyway the call is refused, never run unchecked.
     def check_before!(harness, tool, checked, call_id:, iteration:)
-      call = Harness::Call.new(tool_name: tool.name.to_s.dup.freeze, args: checked, agent: frozen_copy(@agent.name),
-                               call_id: frozen_copy(call_id)).freeze
+      call = hook_call(tool, checked, call_id)
       refusal = begin
         harness.check_before(call)
       rescue StandardError, ScriptError, SystemStackError => e
