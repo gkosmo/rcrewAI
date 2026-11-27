@@ -344,3 +344,76 @@ RSpec.describe 'harness before hooks' do
     expect(refusal.to_h).to eq(reason: 'No ones.', hook: 'before(w) #1', error: nil)
   end
 end
+
+# A killed thread still runs its ensure blocks, so a timed-out hook can keep
+# running after the kill. These are checked directly, not through an agent.
+RSpec.describe 'a harness before hook that keeps running after it timed out' do
+  def w_call(args)
+    RCrewAI::Harness::Call.new(tool_name: 'w', args: args, agent: 'a', call_id: nil)
+  end
+
+  let(:tracker) do
+    Struct.new(:active, :overlapped, :entered, :lock) do
+      def enter
+        lock.synchronize do
+          self.active += 1
+          self.entered += 1
+          self.overlapped ||= active > 1
+        end
+      end
+
+      def leave
+        lock.synchronize { self.active -= 1 }
+      end
+    end.new(0, false, 0, Mutex.new)
+  end
+
+  it 'waits for its cleanup before the next hook runs' do
+    seen = tracker
+    harness = RCrewAI::Harness.new(hook_timeout: 0.5) do
+      before(:w) do |call|
+        seen.enter
+        sleep if call.args['hang']
+        nil
+      ensure
+        sleep 0.1 if call.args['hang'] # cleanup, well within another timeout
+        seen.leave
+      end
+    end
+
+    expect(harness.check_before(w_call({ 'hang' => true })).reason).to include('timed out')
+    expect(harness.check_before(w_call({}))).to be_nil
+    expect(seen.overlapped).to be(false)
+  end
+
+  it 'refuses calls that need hooks, without running them, until it stops' do
+    seen = tracker
+    release = Queue.new
+    stuck = nil
+    harness = RCrewAI::Harness.new(hook_timeout: 0.2) do
+      before(:w) do |call|
+        seen.enter
+        if call.args['hang']
+          stuck = Thread.current
+          sleep
+        end
+        nil
+      ensure
+        release.pop if call.args['hang'] # cleanup that outlives any bound
+        seen.leave
+      end
+    end
+
+    expect(harness.check_before(w_call({ 'hang' => true })).reason).to include('timed out')
+    refusal = harness.check_before(w_call({}))
+    expect(refusal.reason).to include('before(w) #1', 'still running')
+    expect(seen.entered).to eq(1)
+    expect(harness.check_before(RCrewAI::Harness::Call.new(tool_name: 'other', args: {}))).to be_nil
+
+    release << :go
+    stuck.join(10)
+    expect(harness.check_before(w_call({}))).to be_nil
+    expect(seen.entered).to eq(2)
+    expect(seen.overlapped).to be(false)
+  end
+end

@@ -36,6 +36,9 @@ module RCrewAI
         @timeout = timeout
         @hooks = []
         @lock = Mutex.new
+        # Hook threads that were killed but haven't stopped, with their labels.
+        # Only read or changed while holding @lock.
+        @stuck = {}
       end
 
       def add(phase, tools, body)
@@ -62,6 +65,9 @@ module RCrewAI
         # The lock is taken before any hook starts, so the time a call waits
         # for it never counts against a hook's timeout.
         @lock.synchronize do
+          stuck = stuck_refusal
+          return stuck if stuck
+
           hooks.each do |hook|
             refusal = run_before(hook, call)
             return refusal if refusal
@@ -77,6 +83,18 @@ module RCrewAI
                     error: nil)
       end
 
+      # A killed hook thread still runs its ensure blocks. Until it stops, no
+      # other hook on this harness may run, since hooks needn't be thread-safe;
+      # rather than wait for it, calls that need a hook are refused.
+      def stuck_refusal
+        @stuck.delete_if { |thread, _| !thread.alive? }
+        return nil if @stuck.empty?
+
+        Refusal.new(reason: "The before hook #{@stuck.values.first} timed out and is still running, so no hooks on " \
+                            'this harness can run until it stops, and the call was not run',
+                    hook: @stuck.values.first, error: nil)
+      end
+
       def run_before(hook, call)
         thread = Thread.new { verdict(hook, call) }
         outcome = thread.join(@timeout) ? thread.value : timed_out(hook)
@@ -88,7 +106,23 @@ module RCrewAI
       rescue StandardError, ScriptError => e
         failure(hook, "could not be run (#{e.class})")
       ensure
-        thread&.kill
+        stop(thread, hook) if thread
+      end
+
+      # Kills the hook's thread and gives its cleanup up to one more timeout to
+      # finish, still holding the lock. It's recorded as stuck first, so it
+      # stays recorded if this wait is interrupted.
+      def stop(thread, hook)
+        thread.kill
+        return unless thread.alive?
+
+        @stuck[thread] = hook.label
+        begin
+          thread.join(@timeout)
+        rescue StandardError, ScriptError
+          nil # join re-raises whatever ended the thread; either way it's stopped
+        end
+        @stuck.delete(thread) unless thread.alive?
       end
 
       # Runs on the hook's thread. Everything that touches what the hook
