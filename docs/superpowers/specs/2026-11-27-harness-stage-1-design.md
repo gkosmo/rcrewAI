@@ -1,6 +1,6 @@
 # Harness stage 1: control over tool calls
 
-Date: 2026-11-27. Status: draft, awaiting approval. Nothing is built.
+Date: 2026-11-27. Status: approved 2026-11-27. Nothing is built.
 
 ## Why
 
@@ -135,7 +135,7 @@ see.
 - Pausing a run to wait for approval (stage 3).
 - Saving, loading or versioning a harness (stage 3).
 - Context, verification and evals settings.
-- Rails changes, beyond what is listed under open decisions.
+- Rails changes. They follow separately.
 
 ## Success
 Tests show, on both runners, with parallel calls and through `use_tool`: a
@@ -143,11 +143,10 @@ blocked call never runs; a raising, hanging or oddly-returning `before` hook
 never lets a call run; an argument that changes under coercion is judged by its
 coerced value; `after` output reaches the model.
 
-## Open decisions for the owner
-1. **Unlisted tools:** `:ask` is proposed. With no handler and no terminal they
-   are refused. `:allow` is friendlier but a new tool would run unguarded.
-2. **Rails:** proposed as a follow-up, a `config.agent_harness = ->(record) {}`
-   hook like `agent_mcp_tools`. It could instead ship with stage 1.
+## Decisions (approved by the owner)
+1. **Unlisted tools ask.** With no handler and no terminal they are refused.
+2. **Rails is a follow-up** after core works: a
+   `config.agent_harness = ->(record) {}` hook like `agent_mcp_tools`.
 
 ## My calls (change any)
 - Per agent only; no global or crew-wide harness.
