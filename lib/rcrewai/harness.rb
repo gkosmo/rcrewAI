@@ -2,6 +2,7 @@
 
 require_relative 'tool_approval'
 require_relative 'harness/rule'
+require_relative 'harness/hooks'
 
 module RCrewAI
   # Rules for an agent's tool calls.
@@ -9,11 +10,15 @@ module RCrewAI
   #   harness = RCrewAI::Harness.new(default: :ask) do
   #     allow :file_reader, :file_writer
   #     block :file_writer, matching: { file_path: /\.env\z/ }, reason: 'Secrets are read-only.'
+  #     before(:file_writer) { |call| call.args['content'].include?('AKIA') ? 'Looks like a key.' : true }
   #   end
   #
   # Among the rules that apply to a call the strictest wins: block, then ask, then
   # allow. The order they're declared in doesn't change the outcome. With no
   # applicable rule the outcome is +default+.
+  #
+  # Before hooks run, in declaration order, for calls the rules didn't block,
+  # and before anyone is asked for approval. Only true or nil let the call run.
   #
   # Rules see only a tool's name and arguments. They aren't a sandbox.
   class Harness
@@ -37,10 +42,13 @@ module RCrewAI
 
     def initialize(default: :ask, hook_timeout: 60, &definition)
       raise ArgumentError, "default: must be :allow, :ask or :block, got #{default.inspect}" unless OUTCOMES.include?(default)
+      # Without a limit a hook that hangs would hang the run.
+      raise ArgumentError, "hook_timeout: must be a positive number of seconds, got #{hook_timeout.inspect}" unless hook_timeout.is_a?(Numeric) && hook_timeout.real? && hook_timeout.positive?
 
       @default = default
       @hook_timeout = hook_timeout
       @rules = []
+      @hooks = Hooks.new(timeout: hook_timeout)
       instance_eval(&definition) if definition
     end
 
@@ -61,6 +69,22 @@ module RCrewAI
     end
     # rubocop:enable Naming/MethodParameterName
 
+    # Runs the block before each call to the named tools (every tool when none
+    # is named) that the rules let through. It gets a Harness::Call and lets
+    # the call run only by returning true or nil. A String refuses the call
+    # with that reason; any other value, an exception or a timeout refuses it
+    # too. Hooks on one harness run one at a time.
+    def before(*tools, &hook)
+      @hooks.add(:before, tools, hook)
+      self
+    end
+
+    # Returns a Hooks::Refusal from the first before hook that refuses +call+,
+    # or nil when they all pass.
+    def check_before(call)
+      @hooks.check_before(call)
+    end
+
     # Rules and their conditions get a frozen, string-keyed copy of +args+, so
     # they can't change what later rules see. Anything that stops a rule from
     # being checked blocks the call.
@@ -74,17 +98,21 @@ module RCrewAI
       Decision.new(outcome: :block, reason: "A rule condition failed (#{e.class}), so the call was not checked")
     end
 
-    # Checks the rules against the tools an agent has. Returns a warning for each
-    # name that matches none of them. Raises ArgumentError when +matching:+ names
-    # an argument a tool doesn't declare, since that rule could never match.
+    # Checks the rules and hooks against the tools an agent has. Returns a
+    # warning for each name that matches none of them. Raises ArgumentError
+    # when +matching:+ names an argument a tool doesn't declare, since that
+    # rule could never match.
     def validate_tools(tools)
       by_name = tools.group_by { |tool| tool.name.to_s }
       @rules.each { |rule| check_arguments!(rule, by_name) }
 
-      unknown = @rules.flat_map(&:tool_names).uniq - by_name.keys
-      unknown.map do |name|
-        "The harness has a rule for '#{name}', but the agent has no tool with that name " \
-          "(its tools: #{by_name.keys.join(', ')})"
+      named = { 'a rule' => @rules.flat_map(&:tool_names).uniq, 'a before hook' => @hooks.tool_names(:before),
+                'an after hook' => @hooks.tool_names(:after) }
+      named.flat_map do |what, names|
+        (names - by_name.keys).map do |name|
+          "The harness has #{what} for '#{name}', but the agent has no tool with that name " \
+            "(its tools: #{by_name.keys.join(', ')})"
+        end
       end
     end
 

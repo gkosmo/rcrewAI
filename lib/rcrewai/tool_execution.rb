@@ -32,8 +32,8 @@ module RCrewAI
     private
 
     # Prepares the arguments once and freezes a copy of them. The rules, the
-    # approval handler and the tool all get that copy, so what was checked is
-    # what runs. A tool that overrides execute_with_validation (or has none)
+    # before hooks, the approval handler and the tool all get that copy, so
+    # what was checked is what runs. A tool that overrides execute_with_validation (or has none)
     # isn't prepared: it gets its arguments exactly as supplied.
     def call_with_harness(harness, tool, arguments, call_id, iteration)
       prepared = prepared?(tool)
@@ -43,6 +43,7 @@ module RCrewAI
 
       outcome, reason = decide(harness, tool, checked)
       block!(tool, checked, reason, **details) unless %i[allow ask].include?(outcome)
+      check_before!(harness, tool, checked, **details)
       authorize!(tool, checked, call_id, iteration) if outcome == :ask || approval_required?
 
       run(tool, prepared, thawed(checked))
@@ -77,11 +78,30 @@ module RCrewAI
       [:block, "The harness failed (#{e.class}), so the call was not checked"]
     end
 
-    def block!(tool, checked, reason, call_id:, iteration:)
+    def block!(tool, checked, reason, call_id:, iteration:, source: :rule)
       emit(Events::ToolBlocked, :tool_blocked, iteration: iteration,
                                                tool: tool.name, args: checked, call_id: call_id, reason: reason,
-                                               source: :rule)
+                                               source: source)
       raise Harness::Blocked.new(tool.name, reason)
+    end
+
+    # Hooks never raise through Hooks#check_before, but if running them fails
+    # anyway the call is refused, never run unchecked.
+    def check_before!(harness, tool, checked, call_id:, iteration:)
+      call = Harness::Call.new(tool_name: tool.name.to_s.dup.freeze, args: checked, agent: frozen_copy(@agent.name),
+                               call_id: frozen_copy(call_id)).freeze
+      refusal = begin
+        harness.check_before(call)
+      rescue StandardError, ScriptError, SystemStackError => e
+        Harness::Hooks::Refusal.new(reason: "The before hooks failed (#{e.class}), so the call was not run")
+      end
+      return if refusal.nil?
+
+      if refusal.error
+        emit(Events::ToolHookFailed, :tool_hook_failed, iteration: iteration, tool: tool.name, call_id: call_id,
+                                                        hook: refusal.hook, phase: :before, error: refusal.error)
+      end
+      block!(tool, checked, refusal.reason, call_id: call_id, iteration: iteration, source: :hook)
     end
 
     def run(tool, prepared, arguments)

@@ -7,6 +7,14 @@ module RCrewAI
     class Rule
       attr_reader :effect, :tool_names, :reason
 
+      # A name of any other type would never equal a tool's name, so the rule or
+      # hook would silently do nothing.
+      def self.tool_name(tool)
+        raise ArgumentError, "a tool name must be a Symbol or a String, got #{tool.inspect}" unless (tool.is_a?(String) || tool.is_a?(Symbol)) && !tool.empty?
+
+        tool.to_s.dup.freeze
+      end
+
       def initialize(effect, tools, matching: nil, condition: nil, reason: nil)
         @effect = effect
         @tool_names = names_from(tools)
@@ -57,16 +65,10 @@ module RCrewAI
         @effect != :allow
       end
 
-      # A name of any other type would never equal a tool's name, so the rule
-      # would silently do nothing.
       def names_from(tools)
         raise ArgumentError, "#{@effect} needs at least one tool name" if tools.empty?
 
-        tools.map do |tool|
-          raise ArgumentError, "a tool name must be a Symbol or a String, got #{tool.inspect}" unless (tool.is_a?(String) || tool.is_a?(Symbol)) && !tool.empty?
-
-          tool.to_s.dup.freeze
-        end.freeze
+        tools.map { |tool| self.class.tool_name(tool) }.freeze
       end
 
       # Pairs rather than a Hash, so :path and 'path' can't replace one another.
